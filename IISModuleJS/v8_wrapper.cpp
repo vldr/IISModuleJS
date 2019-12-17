@@ -13,6 +13,8 @@ namespace v8_wrapper
 	IHttpResponse * p_http_response = nullptr;
 	IHttpRequest * p_http_request = nullptr;
 
+	REQUEST_NOTIFICATION_STATUS notification_status = RQ_NOTIFICATION_CONTINUE;
+
 	void start()
 	{
 		std::thread engine_thread([] {
@@ -145,16 +147,16 @@ namespace v8_wrapper
 			// Setup our functions
 
 			// clear(): void
-			module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("clear", []() {
 				// Check if our http response is set.
 				if (p_http_response) 
 				{
 					p_http_response->Clear();
 				}
-			});
+			});		
 
 			// clearHeaders(): void
-			module.set("clearHeaders", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("clearHeaders", []() {
 				// Check if our http response is set.
 				if (p_http_response) 
 				{
@@ -163,7 +165,7 @@ namespace v8_wrapper
 			});
 
 			// closeConnection(): void
-			module.set("closeConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("closeConnection", []() {
 				// Check if our http response is set.
 				if (p_http_response) 
 				{
@@ -172,7 +174,7 @@ namespace v8_wrapper
 			});
 
 			// setNeedDisconnect(): void
-			module.set("setNeedDisconnect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("setNeedDisconnect", []() {
 				// Check if our http response is set.
 				if (p_http_response) 
 				{
@@ -180,8 +182,17 @@ namespace v8_wrapper
 				}
 			});
 
+			// getKernelCacheEnabled(): bool
+			module.set("getKernelCacheEnabled", []() {
+				// Check if our http response is set.
+				if (!p_http_response) return false;
+
+				// Return the result...
+				return bool(p_http_response->GetKernelCacheEnabled());
+			});	
+
 			// resetConnection(): void
-			module.set("resetConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("resetConnection", []() {
 				// Check if our http response is set.
 				if (p_http_response) 
 				{
@@ -190,12 +201,55 @@ namespace v8_wrapper
 			});
 
 			// disableBuffering(): void
-			module.set("disableBuffering", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("disableBuffering", []() {
 				// Check if our http response is set.
 				if (p_http_response) 
 				{
 					p_http_response->DisableBuffering();
 				}
+			});
+
+			// getStatus(): Number
+			module.set("getStatus", []() {
+				// Check if our http response is set.
+				if (p_http_response) return (USHORT)0;
+
+				// Our status code...
+				USHORT status_code = 0;
+
+				// Get our status code...
+				p_http_response->GetStatus(&status_code);
+
+				// Return our result.
+				return status_code;
+			});
+
+			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): bool
+			module.set("redirect", [](std::string url, bool reset_status_code, bool include_parameters) {
+				// Check if our http response is set.
+				if (!p_http_response) return false;
+
+				// Set our error decription...
+				auto hr  = p_http_response->Redirect(url.c_str(),
+					reset_status_code,
+					include_parameters);
+
+				// Return our result...
+				return SUCCEEDED(hr);
+			});
+
+			// setErrorDescription(decription: String, shouldHtmlEncode: bool): bool
+			module.set("setErrorDescription", [](std::wstring description, bool should_html_encode) {
+				// Check if our http response is set.
+				if (!p_http_response) return false;
+
+				// Set our error decription...
+				auto hr  = p_http_response->SetErrorDescription(description.c_str(), 
+					description.length(), 
+					should_html_encode);
+
+				// Return our result...
+				return SUCCEEDED(hr);
 			});
 
 			// disableKernelCache(reason: Number {optional}): void
@@ -214,7 +268,6 @@ namespace v8_wrapper
 					p_http_response->DisableKernelCache(reason);
 				}
 			});
-
 
 			// deleteHeader(headerName: String): bool
 			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -264,13 +317,52 @@ namespace v8_wrapper
 				ReturnNULL
 			});
 
+			// write(body: String): bool
+			module.set("write", [](std::string body, std::string mime) {
+				// Check if our http response is set.
+				if (!p_http_response) return false;
+
+				// Get our byte size...
+				auto size_of_bytes = body.length() * sizeof(char);
+
+				// Check if we have too many bytes...
+				if (size_of_bytes > 65535) return false;
+
+				// Create an array of data chunks.
+				HTTP_DATA_CHUNK data_chunk[1];
+				DWORD cb_sent;
+
+				// Clear and set our header...
+				p_http_response->SetHeader(HttpHeaderContentType, mime.c_str(), (USHORT)mime.length(), TRUE);
+
+				// Set the chunk to a chunk in memory.
+				data_chunk[0].DataChunkType = HttpDataChunkFromMemory;
+				data_chunk[0].FromMemory.pBuffer = (PVOID)body.data();
+				data_chunk[0].FromMemory.BufferLength = (USHORT)size_of_bytes;
+
+				// Insert the data chunks into the response.
+				auto hr = p_http_response->WriteEntityChunks(data_chunk, 1, FALSE, FALSE, &cb_sent);
+
+				// Check if we succeeded.
+				if (SUCCEEDED(hr))
+				{
+					// Set our notification status...
+					notification_status = RQ_NOTIFICATION_FINISH_REQUEST;
+
+					// Return our result.
+					return true;
+				}
+
+				// Otherwise return false.
+				return false;				
+			});
+
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool): bool
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check arguments.
-				if ( args.Length() != 3 
+				if ( args.Length() < 2 || args.Length() > 3
 					|| !args[0]->IsString() 
-					|| !args[1]->IsString() 
-					|| !args[2]->IsBoolean() ) 
+					|| !args[1]->IsString()) 
 					ReturnNULL
 
 				// Check if our http response is set.
@@ -279,7 +371,9 @@ namespace v8_wrapper
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
-				auto should_replace = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+				auto should_replace = args.Length() == 3 && args[2]->IsBoolean() 
+					? v8pp::from_v8<bool>(args.GetIsolate(), args[2]) 
+					: true;
 
 				// Attempt to get our header. 
 				auto hr = p_http_response->SetHeader( header_name.c_str(), 
@@ -323,7 +417,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pAbsPath, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.AbsPathLength);
+					p_http_request->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(WCHAR));
 			});
 
 			// getFullUrl(): String
@@ -333,7 +427,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pFullUrl, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.FullUrlLength);
+					p_http_request->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(WCHAR));
 			});
 
 			// getQueryString(): String
@@ -343,7 +437,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pQueryString, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.QueryStringLength);
+					p_http_request->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(WCHAR));
 			});
 
 			// getHost(): String
@@ -353,7 +447,25 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pHost, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.HostLength);
+					p_http_request->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(WCHAR));
+			});
+
+			// getLocalAddress(): String
+			module.set("getLocalAddress", []() {
+				// Check if our pointer is valid...
+				if (!p_http_request) return std::string();
+				
+				// Cast our socket...
+				sockaddr_in * socket = (sockaddr_in *)p_http_request->GetLocalAddress();
+
+				// Setup our ip address variable...
+				char ip_address[INET6_ADDRSTRLEN] = { 0 };
+
+				// Get our ip address...
+				InetNtop(socket->sin_family, &socket->sin_addr, ip_address, INET6_ADDRSTRLEN);
+
+				// Convert our ip address to an std::string...
+				return std::string(ip_address);
 			});
 
 			// getRemoteAddress(): String
@@ -365,10 +477,10 @@ namespace v8_wrapper
 				sockaddr_in * socket = (sockaddr_in *)p_http_request->GetRemoteAddress();
 
 				// Setup our ip address variable...
-				char ip_address[INET_ADDRSTRLEN];
+				char ip_address[INET6_ADDRSTRLEN] = { 0 };
 
 				// Get our ip address...
-				InetNtop(socket->sin_family, &socket->sin_addr, ip_address, INET_ADDRSTRLEN);
+				InetNtop(socket->sin_family, &socket->sin_addr, ip_address, INET6_ADDRSTRLEN);
 
 				// Convert our ip address to an std::string...
 				return std::string(ip_address);
@@ -406,10 +518,10 @@ namespace v8_wrapper
 		}
 	}
 
-	void begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest)
+	REQUEST_NOTIFICATION_STATUS begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest)
 	{
 		// Check if our pointers are null...
-		if (!pHttpResponse || !pHttpRequest) return;
+		if (!pHttpResponse || !pHttpRequest) return RQ_NOTIFICATION_CONTINUE;
 
 		// Check that isolate and the callback function is set...
 		if (isolate && !function_begin_request.IsEmpty())
@@ -435,6 +547,7 @@ namespace v8_wrapper
 			// Update our global pointers...
 			p_http_request = pHttpRequest;
 			p_http_response = pHttpResponse;
+			notification_status = RQ_NOTIFICATION_CONTINUE;
 
 			// Attempt to get our registered create move callback and call it...
 			if (local_function->IsCallable())
@@ -444,6 +557,8 @@ namespace v8_wrapper
 			p_http_request = nullptr;
 			p_http_response = nullptr;
 		}
+
+		return notification_status;
 	}
 
 	bool execute_string(char * str, bool print_result, bool report_exceptions)

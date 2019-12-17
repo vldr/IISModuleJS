@@ -38,7 +38,7 @@ namespace v8_wrapper
 {
 	int __cdecl vs_printf(const char *format, ...);
 
-	void begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest);
+	REQUEST_NOTIFICATION_STATUS begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest);
 	void register_begin_request(const v8::FunctionCallbackInfo<v8::Value>& args);
 
 	void start();
