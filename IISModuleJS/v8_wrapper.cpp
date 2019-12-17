@@ -4,10 +4,8 @@ namespace v8_wrapper
 {
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
-
 	v8::Global<v8::Function> function_begin_request;
 	v8::Persistent<v8::Context> context;
-
 	v8::Isolate * isolate = nullptr;
 
 	IHttpResponse * p_http_response = nullptr;
@@ -33,21 +31,13 @@ namespace v8_wrapper
 			// Setup our isolate...
 			isolate = v8::Isolate::New(create_params);
 
-			{
-				// Setup lockers...
-				v8::Locker locker(isolate);
-				v8::Isolate::Scope isolate_scope(isolate);
-				v8::HandleScope handle_scope(isolate);
+			// Reset our engine...
+			reset();
 
-				// Setup our context...
-				context.Reset(isolate, create_shell_context());
-			}
+			//////////////////////////////////////////
 
 			// Setup script file name...
 			const auto file_name = "test.js";
-
-			// Initialize our objects...
-			initialize_objects();
 
 			// Read our file...
 			read_file(file_name);
@@ -75,7 +65,10 @@ namespace v8_wrapper
 				if (wait_handle == WAIT_OBJECT_0)
 				{
 					// Inform user...
-					vs_printf("Reloading \"%s\" script...\n", file_name);
+					vs_printf("Resetting and reloading \"%s\" script...\n", file_name);
+
+					// Reset our engine...
+					reset();
 
 					// Read our file again...
 					read_file(file_name);
@@ -90,18 +83,24 @@ namespace v8_wrapper
 			}
 		});
 		engine_thread.detach();
+	}
 
-		/*
-			// Dispose our isolate...
-			isolate->Dispose();
+	void reset()
+	{
+		// Setup lockers...
+		v8::Locker locker(isolate);
+		v8::Isolate::Scope isolate_scope(isolate);
+		v8::HandleScope handle_scope(isolate);
 
-			// Dispose everything...
-			v8::V8::Dispose();
-			v8::V8::ShutdownPlatform();
+		global_http_response_object.Reset();
+		global_http_request_object.Reset();
+		function_begin_request.Reset();
 
-			// Delete...
-			delete create_params.array_buffer_allocator;
-		*/
+		// Reset our context...
+		context.Reset(isolate, create_shell_context());
+
+		// Initialize our objects...
+		initialize_objects();
 	}
 
 	v8::Local<v8::Context> create_shell_context()
@@ -317,8 +316,8 @@ namespace v8_wrapper
 				ReturnNULL
 			});
 
-			// write(body: String): bool
-			module.set("write", [](std::string body, std::string mime) {
+			// write(body: String, mimetype: String): bool
+			module.set("write", [](std::string body, std::string mime_type) {
 				// Check if our http response is set.
 				if (!p_http_response) return false;
 
@@ -333,7 +332,7 @@ namespace v8_wrapper
 				DWORD cb_sent;
 
 				// Clear and set our header...
-				p_http_response->SetHeader(HttpHeaderContentType, mime.c_str(), (USHORT)mime.length(), TRUE);
+				p_http_response->SetHeader(HttpHeaderContentType, mime_type.c_str(), (USHORT)mime_type.length(), TRUE);
 
 				// Set the chunk to a chunk in memory.
 				data_chunk[0].DataChunkType = HttpDataChunkFromMemory;
@@ -417,7 +416,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pAbsPath, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(WCHAR));
+					p_http_request->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(wchar_t));
 			});
 
 			// getFullUrl(): String
@@ -427,7 +426,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pFullUrl, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(WCHAR));
+					p_http_request->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(wchar_t));
 			});
 
 			// getQueryString(): String
@@ -437,7 +436,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pQueryString, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(WCHAR));
+					p_http_request->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(wchar_t));
 			});
 
 			// getHost(): String
@@ -447,7 +446,7 @@ namespace v8_wrapper
 
 				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pHost, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(WCHAR));
+					p_http_request->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(wchar_t));
 			});
 
 			// getLocalAddress(): String
@@ -521,42 +520,43 @@ namespace v8_wrapper
 	REQUEST_NOTIFICATION_STATUS begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest)
 	{
 		// Check if our pointers are null...
-		if (!pHttpResponse || !pHttpRequest) return RQ_NOTIFICATION_CONTINUE;
+		if (!isolate || !pHttpResponse || !pHttpRequest) return RQ_NOTIFICATION_CONTINUE;
 
-		// Check that isolate and the callback function is set...
-		if (isolate && !function_begin_request.IsEmpty())
-		{
-			// Setup our lockers, isolate scope, and handle scope...
-			v8::Locker locker(isolate);
-			v8::Isolate::Scope isolate_scope(isolate);
-			v8::HandleScope handle_scope(isolate);
-			v8::Context::Scope context_scope(context.Get(isolate));
-			
-			////////////////////////////////////////////////
+		// Check if our function is empty...
+		if (function_begin_request.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
 
-			// Get our object...
-			auto http_response_object = global_http_response_object.Get(isolate);
-			auto http_request_object = global_http_request_object.Get(isolate);
+		////////////////////////////////////////////////
 
-			// Setup our arguments...
-			v8::Local<v8::Value> argv[2] = { http_response_object, http_request_object };
+		// Setup our lockers, isolate scope, and handle scope...
+		v8::Locker locker(isolate);
+		v8::Isolate::Scope isolate_scope(isolate);
+		v8::HandleScope handle_scope(isolate);
+		v8::Context::Scope context_scope(context.Get(isolate));
+		
+		////////////////////////////////////////////////
 
-			// Setup local function...
-			auto local_function = function_begin_request.Get(isolate);
+		// Get our object...
+		auto http_response_object = global_http_response_object.Get(isolate);
+		auto http_request_object = global_http_request_object.Get(isolate);
 
-			// Update our global pointers...
-			p_http_request = pHttpRequest;
-			p_http_response = pHttpResponse;
-			notification_status = RQ_NOTIFICATION_CONTINUE;
+		// Setup our arguments...
+		v8::Local<v8::Value> argv[2] = { http_response_object, http_request_object };
 
-			// Attempt to get our registered create move callback and call it...
-			if (local_function->IsCallable())
-				local_function->Call(isolate->GetCurrentContext(), v8::Null(isolate), 2, argv);
+		// Setup local function...
+		auto local_function = function_begin_request.Get(isolate);
 
-			// Reset our pointers...
-			p_http_request = nullptr;
-			p_http_response = nullptr;
-		}
+		// Update our global values...
+		notification_status = RQ_NOTIFICATION_CONTINUE;
+		p_http_request = pHttpRequest;
+		p_http_response = pHttpResponse;
+
+		// Attempt to get our registered create move callback and call it...
+		if (local_function->IsCallable())
+			local_function->Call(isolate->GetCurrentContext(), v8::Null(isolate), 2, argv);
+
+		// Reset our pointers...
+		p_http_request = nullptr;
+		p_http_response = nullptr;
 
 		return notification_status;
 	}
@@ -581,9 +581,7 @@ namespace v8_wrapper
 		// Setup our source...
 		auto source = v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal).ToLocalChecked();
 
-		// Empty out our function...
-		function_begin_request.Empty();
-
+		// Compile.
 		if (!v8::Script::Compile(context, source, &origin).ToLocal(&script))
 		{
 			// Print errors that happened during compilation.

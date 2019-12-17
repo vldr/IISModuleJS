@@ -42,6 +42,7 @@ namespace v8_wrapper
 	void register_begin_request(const v8::FunctionCallbackInfo<v8::Value>& args);
 
 	void start();
+	void reset();
 	void initialize_objects();
 
 	void read_file(const char* name);
