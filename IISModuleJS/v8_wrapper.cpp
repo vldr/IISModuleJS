@@ -11,8 +11,6 @@ namespace v8_wrapper
 	IHttpResponse * p_http_response = nullptr;
 	IHttpRequest * p_http_request = nullptr;
 
-	REQUEST_NOTIFICATION_STATUS notification_status = RQ_NOTIFICATION_CONTINUE;
-
 	void start()
 	{
 		std::thread engine_thread([] {
@@ -345,9 +343,6 @@ namespace v8_wrapper
 				// Check if we succeeded.
 				if (SUCCEEDED(hr))
 				{
-					// Set our notification status...
-					notification_status = RQ_NOTIFICATION_FINISH_REQUEST;
-
 					// Return our result.
 					return true;
 				}
@@ -546,19 +541,24 @@ namespace v8_wrapper
 		auto local_function = function_begin_request.Get(isolate);
 
 		// Update our global values...
-		notification_status = RQ_NOTIFICATION_CONTINUE;
 		p_http_request = pHttpRequest;
 		p_http_response = pHttpResponse;
 
 		// Attempt to get our registered create move callback and call it...
-		if (local_function->IsCallable())
-			local_function->Call(isolate->GetCurrentContext(), v8::Null(isolate), 2, argv);
+		auto result = local_function->Call(isolate->GetCurrentContext(), v8::Null(isolate), 2, argv);
 
 		// Reset our pointers...
 		p_http_request = nullptr;
 		p_http_response = nullptr;
 
-		return notification_status;
+		// Check if our function returned anything...
+		if (result.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
+
+		// Our returned value...
+		auto returned_value = v8pp::from_v8<int>(isolate, result.ToLocalChecked(), 0);
+
+		// Cast our value to a request notification...
+		return REQUEST_NOTIFICATION_STATUS(returned_value);
 	}
 
 	bool execute_string(char * str, bool print_result, bool report_exceptions)
@@ -602,7 +602,7 @@ namespace v8_wrapper
 			// Print errors that happened during execution.
 			if (report_exceptions) report_exception(&try_catch);
 
-			return false;
+			return true;
 		}
 
 		//////////////////////////////////////////////////
