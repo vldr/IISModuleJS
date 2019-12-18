@@ -127,7 +127,6 @@ namespace v8_wrapper
 
 	void initialize_objects()
 	{
-		// Setup.
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
 		v8::HandleScope handle_scope(isolate);
@@ -145,71 +144,58 @@ namespace v8_wrapper
 
 			// clear(): void
 			module.set("clear", []() {
-				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					p_http_response->Clear();
-				}
+				if (!p_http_response) throw std::exception("invalid p_http_response for clear");
+
+				p_http_response->Clear();
 			});		
 
 			// clearHeaders(): void
 			module.set("clearHeaders", []() {
-				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					p_http_response->ClearHeaders();
-				}
+				if (!p_http_response) throw std::exception("invalid p_http_response for clearHeaders");
+
+				p_http_response->ClearHeaders();
 			});
 
 			// closeConnection(): void
 			module.set("closeConnection", []() {
-				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					p_http_response->CloseConnection();
-				}
+				if (!p_http_response) throw std::exception("invalid p_http_response for closeConnection");
+					
+				p_http_response->CloseConnection();
+				
 			});
 
 			// setNeedDisconnect(): void
 			module.set("setNeedDisconnect", []() {
-				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					p_http_response->SetNeedDisconnect();
-				}
+				if (!p_http_response) throw std::exception("invalid p_http_response for setNeedDisconnect");
+					
+				p_http_response->SetNeedDisconnect();
 			});
 
 			// getKernelCacheEnabled(): bool
 			module.set("getKernelCacheEnabled", []() {
-				// Check if our http response is set.
-				if (!p_http_response) return false;
+				if (!p_http_response) throw std::exception("invalid p_http_response for getKernelCacheEnabled");
 
-				// Return the result...
 				return bool(p_http_response->GetKernelCacheEnabled());
 			});	
 
 			// resetConnection(): void
 			module.set("resetConnection", []() {
-				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					p_http_response->ResetConnection();
-				}
+				if (!p_http_response) throw std::exception("invalid p_http_response for resetConnection");
+					
+				p_http_response->ResetConnection();
 			});
 
 			// disableBuffering(): void
 			module.set("disableBuffering", []() {
-				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					p_http_response->DisableBuffering();
-				}
+				if (!p_http_response) throw std::exception("invalid p_http_response for disableBuffering");
+					
+				p_http_response->DisableBuffering();
 			});
 
 			// getStatus(): Number
 			module.set("getStatus", []() {
 				// Check if our http response is set.
-				if (p_http_response) return (USHORT)0;
+				if (!p_http_response) throw std::exception("invalid p_http_response for getStatus");
 
 				// Our status code...
 				USHORT status_code = 0;
@@ -224,7 +210,7 @@ namespace v8_wrapper
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): bool
 			module.set("redirect", [](std::string url, bool reset_status_code, bool include_parameters) {
 				// Check if our http response is set.
-				if (!p_http_response) return false;
+				if (!p_http_response) throw std::exception("invalid p_http_response for redirect");
 
 				// Set our error decription...
 				auto hr  = p_http_response->Redirect(url.c_str(),
@@ -238,7 +224,7 @@ namespace v8_wrapper
 			// setErrorDescription(decription: String, shouldHtmlEncode: bool): bool
 			module.set("setErrorDescription", [](std::wstring description, bool should_html_encode) {
 				// Check if our http response is set.
-				if (!p_http_response) return false;
+				if (!p_http_response) throw std::exception("invalid p_http_response for setErrorDescription");
 
 				// Set our error decription...
 				auto hr  = p_http_response->SetErrorDescription(description.c_str(), 
@@ -249,51 +235,34 @@ namespace v8_wrapper
 				return SUCCEEDED(hr);
 			});
 
-			// disableKernelCache(reason: Number {optional}): void
-			module.set("disableKernelCache", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			// disableKernelCache(reason: Number): void
+			module.set("disableKernelCache", [](int reason) {
 				// Check if our http response is set.
-				if (p_http_response) 
-				{
-					// Our reason for disabling.
-					ULONG reason = 9;
+				if (!p_http_response) throw std::exception("invalid p_http_response for disableKernelCache");
 
-					// Optional arguments.
-					if (args.Length() == 1 && args[0]->IsNumber())
-						reason = v8pp::from_v8<ULONG>(args.GetIsolate(), args[0]);
-
-					// Disable kernel caching...
-					p_http_response->DisableKernelCache(reason);
-				}
+				// Disable kernel caching...
+				p_http_response->DisableKernelCache(reason);
 			});
 
 			// deleteHeader(headerName: String): bool
-			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check arguments.
-				if ( args.Length() != 1 || !args[0]->IsString() ) ReturnNULL
-
-				// Check if our http response is set.
-				if (!p_http_response) 
-				{
-					ReturnThis(false)
-				}
-
-				// Get our header name...
-				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			module.set("deleteHeader", [](std::string header_name) {
+				// Check if our http response is valid.
+				if (!p_http_response) throw std::exception("invalid p_http_response for deleteHeader");
 
 				// Attempt to get our header. 
 				auto hr = p_http_response->DeleteHeader(header_name.c_str());
 
 				// Check if our header value is valid...
-				ReturnThis(SUCCEEDED(hr))
+				return SUCCEEDED(hr);
 			});
 
 			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check arguments.
-				if ( args.Length() != 1 || !args[0]->IsString() ) ReturnNULL
-
 				// Check if our http response is set.
-				if ( !p_http_response ) ReturnNULL
+				if (!p_http_response) throw std::exception("invalid p_http_response for getHeader");
+				
+				// Check arguments.
+				if (args.Length() < 1 || !args[0]->IsString()) throw std::exception("invalid signature for getHeader");
 
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
@@ -307,23 +276,52 @@ namespace v8_wrapper
 				// Check if our header value is valid...
 				if (header_value)
 				{
-					ReturnThis(std::string(header_value, header_value_count))
+					RETURN_THIS(std::string(header_value, header_value_count))
 				}
 
 				// Return null otherwise.
-				ReturnNULL
+				RETURN_NULL
 			});
 
 			// write(body: String, mimetype: String): bool
-			module.set("write", [](std::string body, std::string mime_type) {
+			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) return false;
+				if (!p_http_response) throw std::exception("invalid p_http_response for write");
 
-				// Get our byte size...
-				auto size_of_bytes = body.length() * sizeof(char);
+				// Check arguments.
+				if (args.Length() < 2 || !args[1]->IsString()) throw std::exception("invalid signature for write");
+
+				// Setup our length and body which will
+				// be used to deliver our content.
+				std::vector<unsigned char> body_vector;
+				std::string body_string;
+
+				PVOID body = nullptr;
+				size_t size = 0;
+
+				// Check if a string was provided.
+				if (args[0]->IsString())
+				{
+					body_string = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+					body = (PVOID)body_string.data();
+					size = body_string.length() * sizeof(char);
+				}
+				// Or if an array was provided.
+				else if (args[0]->IsArray())
+				{
+					body_vector = v8pp::from_v8<std::vector<unsigned char>>(args.GetIsolate(), args[0]);
+
+					body = (PVOID)body_vector.data();
+					size = body_vector.size() * sizeof(unsigned char);
+				}
+				else throw std::exception("invalid first argument type for write");
 
 				// Check if we have too many bytes...
-				if (size_of_bytes > 65535) return false;
+				if (size > 65535) throw std::exception("too many bytes in body for write");
+
+				// Get our mimetype.
+				auto mime_type = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
 
 				// Create an array of data chunks.
 				HTTP_DATA_CHUNK data_chunk[1];
@@ -334,48 +332,39 @@ namespace v8_wrapper
 
 				// Set the chunk to a chunk in memory.
 				data_chunk[0].DataChunkType = HttpDataChunkFromMemory;
-				data_chunk[0].FromMemory.pBuffer = (PVOID)body.data();
-				data_chunk[0].FromMemory.BufferLength = (USHORT)size_of_bytes;
+				data_chunk[0].FromMemory.pBuffer = (PVOID)body;
+				data_chunk[0].FromMemory.BufferLength = (USHORT)size;
 
 				// Insert the data chunks into the response.
 				auto hr = p_http_response->WriteEntityChunks(data_chunk, 1, FALSE, FALSE, &cb_sent);
 
 				// Check if we succeeded.
-				if (SUCCEEDED(hr))
-				{
-					// Return our result.
-					return true;
-				}
-
-				// Otherwise return false.
-				return false;				
+				return SUCCEEDED(hr);
 			});
 
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool): bool
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				// Check if our http response is set.
+				if (!p_http_response) throw std::exception("invalid p_http_response for setHeader");
+
 				// Check arguments.
-				if ( args.Length() < 2 || args.Length() > 3
+				if ( args.Length() < 2
 					|| !args[0]->IsString() 
 					|| !args[1]->IsString()) 
-					ReturnNULL
-
-				// Check if our http response is set.
-				if ( !p_http_response ) ReturnNULL
+					throw std::exception("invalid signature for setHeader");
 
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
-				auto should_replace = args.Length() == 3 && args[2]->IsBoolean() 
-					? v8pp::from_v8<bool>(args.GetIsolate(), args[2]) 
-					: true;
+				auto should_replace = args.Length() >= 3 ? v8pp::from_v8<bool>(args.GetIsolate(), args[2], true) : true;
 
 				// Attempt to get our header. 
 				auto hr = p_http_response->SetHeader( header_name.c_str(), 
 					header_value.c_str(), 
 					header_value.length(), 
-					should_replace );  
+					should_replace);  
 
-				ReturnThis(SUCCEEDED(hr))
+				RETURN_THIS(SUCCEEDED(hr))
 			});
 
 			// Reset our pointer...
@@ -397,49 +386,39 @@ namespace v8_wrapper
 			// Gets the method
 			// getMethod(): String
 			module.set("getMethod", []() {
-				// Check if our pointer is valid...
-				if (!p_http_request) return std::string();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getMethod");
 
-				// Convert our ip address to an std::string...
 				return std::string(p_http_request->GetHttpMethod());
 			});
 
 			// getAbsPath(): String
 			module.set("getAbsPath", []() {
-				// Check if our pointer is valid...
-				if (!p_http_request) return std::wstring();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getMethod");
 
-				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pAbsPath, 
 					p_http_request->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(wchar_t));
 			});
 
 			// getFullUrl(): String
 			module.set("getFullUrl", []() {
-				// Check if our pointer is valid...
-				if (!p_http_request) return std::wstring();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getFullUrl");
 
-				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pFullUrl, 
 					p_http_request->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(wchar_t));
 			});
 
 			// getQueryString(): String
 			module.set("getQueryString", []() {
-				// Check if our pointer is valid...
-				if (!p_http_request) return std::wstring();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getQueryString");
 
-				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pQueryString, 
 					p_http_request->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(wchar_t));
 			});
 
 			// getHost(): String
 			module.set("getHost", []() {
-				// Check if our pointer is valid...
-				if (!p_http_request) return std::wstring();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getHost");
 
-				// Convert our ip address to an std::string...
 				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pHost, 
 					p_http_request->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(wchar_t));
 			});
@@ -447,46 +426,26 @@ namespace v8_wrapper
 			// getLocalAddress(): String
 			module.set("getLocalAddress", []() {
 				// Check if our pointer is valid...
-				if (!p_http_request) return std::string();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getLocalAddress");
 				
-				// Cast our socket...
-				sockaddr_in * socket = (sockaddr_in *)p_http_request->GetLocalAddress();
-
-				// Setup our ip address variable...
-				char ip_address[INET6_ADDRSTRLEN] = { 0 };
-
-				// Get our ip address...
-				InetNtop(socket->sin_family, &socket->sin_addr, ip_address, INET6_ADDRSTRLEN);
-
-				// Convert our ip address to an std::string...
-				return std::string(ip_address);
+				return sock_to_ip(p_http_request->GetLocalAddress());
 			});
 
 			// getRemoteAddress(): String
 			module.set("getRemoteAddress", []() {
 				// Check if our pointer is valid...
-				if (!p_http_request) return std::string();
+				if (!p_http_request) throw std::exception("invalid p_http_request for getRemoteAddress");
 				
-				// Cast our socket...
-				sockaddr_in * socket = (sockaddr_in *)p_http_request->GetRemoteAddress();
-
-				// Setup our ip address variable...
-				char ip_address[INET6_ADDRSTRLEN] = { 0 };
-
-				// Get our ip address...
-				InetNtop(socket->sin_family, &socket->sin_addr, ip_address, INET6_ADDRSTRLEN);
-
-				// Convert our ip address to an std::string...
-				return std::string(ip_address);
+				return sock_to_ip(p_http_request->GetRemoteAddress());
 			});
 
 			// setHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check arguments.
-				if (args.Length() != 1 || !args[0]->IsString()) ReturnNULL
-
 				// Check if our http response is set.
-				if (!p_http_request) ReturnNULL
+				if (!p_http_request) throw std::exception("invalid p_http_request for getHeader");
+
+				// Check arguments.
+				if (args.Length() < 1 || !args[0]->IsString()) throw std::exception("invalid signature for getHeader");
 
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
@@ -500,11 +459,11 @@ namespace v8_wrapper
 				// Check if our header value is valid...
 				if (header_value)
 				{
-					ReturnThis(std::string(header_value, header_value_count))
+					RETURN_THIS(std::string(header_value, header_value_count))
 				}
 
 				// Return null otherwise.
-				ReturnNULL
+				RETURN_NULL
 			});
 
 			// Reset our pointer...
@@ -559,6 +518,40 @@ namespace v8_wrapper
 
 		// Cast our value to a request notification...
 		return REQUEST_NOTIFICATION_STATUS(returned_value);
+	}
+
+	std::string sock_to_ip(PSOCKADDR address)
+	{
+		if (!address) throw std::exception("invalid address for sock_to_ip");
+
+		if (address->sa_family == AF_INET)
+		{
+			// Setup our ip address variable...
+			char ip_address[INET_ADDRSTRLEN] = { 0 };
+
+			// Cast our address to a socket.
+			auto socket = (sockaddr_in*)address;
+
+			// Get our ip address...
+			InetNtopA(socket->sin_family, &socket->sin_addr, ip_address, sizeof(ip_address));
+
+			return std::string(ip_address);
+		}
+		else if (address->sa_family == AF_INET6)
+		{
+			// Setup our ip address variable...
+			char ip_address[INET6_ADDRSTRLEN] = { 0 };
+
+			// Cast our address to a socket.
+			auto socket = (sockaddr_in6*)address;
+
+			// Get our ip address...
+			InetNtopA(socket->sin6_family, &socket->sin6_addr, ip_address, sizeof(ip_address));
+
+			return std::string(ip_address);
+		}
+		else
+			throw std::exception("invalid family for sock_to_ip");
 	}
 
 	bool execute_string(char * str, bool print_result, bool report_exceptions)

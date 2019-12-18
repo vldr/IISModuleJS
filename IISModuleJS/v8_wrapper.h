@@ -31,8 +31,8 @@
 #include <v8pp/module.hpp>
 #include <thread>
 
-#define ReturnNULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
-#define ReturnThis(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
+#define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
+#define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
 
 namespace v8_wrapper
 {
@@ -50,6 +50,7 @@ namespace v8_wrapper
 	void print(const v8::FunctionCallbackInfo<v8::Value>& args);
 	void report_exception(v8::TryCatch * try_catch);
 
+	std::string sock_to_ip(PSOCKADDR address);
 	bool execute_string(char * str, bool print_result, bool report_exceptions);
 	const char* c_string(v8::String::Utf8Value& value);
 
