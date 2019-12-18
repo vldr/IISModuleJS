@@ -7,14 +7,9 @@
 class HttpModule : public CHttpModule
 {
 public:
-	HttpModule();
-	~HttpModule();
-
 	REQUEST_NOTIFICATION_STATUS OnBeginRequest(
 		IN IHttpContext* pHttpContext,
 		IN IHttpEventProvider* pProvider
 	);
-private:
-	HANDLE m_hEventLog;
 };
 

@@ -7,6 +7,8 @@
 
 #else
 #pragma comment(lib, "v8_monolith.release.lib")
+#pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "dbghelp.lib")
 #endif
 
 #define _WINSOCKAPI_

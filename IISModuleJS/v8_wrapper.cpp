@@ -53,7 +53,7 @@ namespace v8_wrapper
 
 			// Setup our last write change handle...
 			HANDLE change_handle = FindFirstChangeNotificationA(_T(current_directory), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
-
+			 
 			// Loop forever...
 			for (;;)
 			{
@@ -191,7 +191,7 @@ namespace v8_wrapper
 					
 				p_http_response->DisableBuffering();
 			});
-
+				
 			// getStatus(): Number
 			module.set("getStatus", []() {
 				// Check if our http response is set.
@@ -297,7 +297,7 @@ namespace v8_wrapper
 				std::string body_string;
 
 				PVOID body = nullptr;
-				size_t size = 0;
+				size_t size = 0; 
 
 				// Check if a string was provided.
 				if (args[0]->IsString())
