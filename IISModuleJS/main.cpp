@@ -7,7 +7,7 @@ HRESULT __stdcall RegisterModule(DWORD dwServerVersion, IHttpModuleRegistrationI
 {
 	UNREFERENCED_PARAMETER(dwServerVersion);
 
-	v8_wrapper::start();
+	v8_wrapper::start(pHttpServer->GetAppPoolName());
 
 	return pModuleInfo->SetRequestNotifications(new ModuleFactory(),
 			RQ_BEGIN_REQUEST,

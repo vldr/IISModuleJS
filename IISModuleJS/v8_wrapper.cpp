@@ -10,9 +10,13 @@ namespace v8_wrapper
 
 	IHttpResponse * p_http_response = nullptr;
 	IHttpRequest * p_http_request = nullptr;
+	std::wstring script_name;
 
-	void start()
+	void start(std::wstring app_pool_name)
 	{
+		// Set our app pool name up.
+		script_name = app_pool_name + L".js";
+
 		std::thread engine_thread([] {
 			// Initialize...
 			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
@@ -30,60 +34,17 @@ namespace v8_wrapper
 			isolate = v8::Isolate::New(create_params);
 
 			// Reset our engine...
-			reset();
+			reset_engine();
 
 			//////////////////////////////////////////
 
-			// Setup script file name...
-			const auto file_name = "test.js";
-
-			// Read our file...
-			read_file(file_name);
-
-			//////////////////////////////////////////
-			
-			// Our current directory...
-			char current_directory[MAX_PATH + 1];
-
-			// Get our current directory...
-			GetCurrentDirectoryA(MAX_PATH, current_directory);
-
-			// Set our null terminator...
-			current_directory[MAX_PATH] = '\0';
-
-			// Setup our last write change handle...
-			HANDLE change_handle = FindFirstChangeNotificationA(_T(current_directory), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
-			 
-			// Loop forever...
-			for (;;)
-			{
-				// Wait infinitely for our change handle...
-				DWORD wait_handle = WaitForSingleObject(change_handle, INFINITE);
-
-				if (wait_handle == WAIT_OBJECT_0)
-				{
-					// Inform user...
-					vs_printf("Resetting and reloading \"%s\" script...\n", file_name);
-
-					// Reset our engine...
-					reset();
-
-					// Read our file again...
-					read_file(file_name);
-
-					// Find the next change notification...
-					FindNextChangeNotification(change_handle);
-				}
-				else
-				{
-					break;
-				}
-			}
+			// Load our script and watch them.
+			load_and_watch();
 		});
 		engine_thread.detach();
 	}
 
-	void reset()
+	void reset_engine()
 	{
 		// Setup lockers...
 		v8::Locker locker(isolate);
@@ -101,28 +62,157 @@ namespace v8_wrapper
 		initialize_objects();
 	}
 
+	std::experimental::filesystem::path get_path(std::wstring script = std::wstring())
+	{
+		namespace fs = std::experimental::filesystem;
+
+		//////////////////////////////////////////
+
+		// String containing our documents path.
+		PWSTR known_folder = nullptr;
+		
+		// Fetch our documents path.
+		auto hr = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, (HANDLE)-1, &known_folder);
+
+		// Check if our hr failed...
+		if (FAILED(hr)) throw std::exception("unable to get known folder");
+
+		//////////////////////////////////////////
+
+		// Setup our path.
+		fs::path path = known_folder;
+
+		// Free our object.
+		CoTaskMemFree(known_folder);
+
+		//////////////////////////////////////////
+
+		if (!script.empty())
+		{
+			// Create our script path.
+			fs::path script_path = script;
+
+			// Append our script's file name.
+			path.append(script_path.filename());
+		}
+
+		/////////////////////////////////////////
+		
+		// Return path.
+		return path;
+
+		//////////////////////////////////////////
+	}
+
+	void load_and_watch()
+	{
+		// Get our working directory path to monitor for changes.
+		auto working_directory = get_path();
+
+		// Get our working directory path to monitor for changes.
+		auto script_path = get_path(script_name);
+
+		//////////////////////////////////////////
+
+		// Read our file...
+		execute_file(script_path.c_str());
+		 
+		//////////////////////////////////////////
+
+		// Setup our last write change handle...
+		HANDLE change_handle = FindFirstChangeNotificationW(working_directory.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
+
+		// Loop forever... 
+		for (;;)
+		{
+			// Wait infinitely for our change handle...
+			DWORD wait_handle = WaitForSingleObject(change_handle, INFINITE);
+
+			if (wait_handle == WAIT_OBJECT_0)
+			{
+				// Inform user...
+				vs_printf("Resetting and reloading \"%ws\" script...\n", script_name.c_str());
+
+				// Reset our engine...
+				reset_engine();
+
+				// Read our file again...
+				execute_file(script_path.c_str());
+
+				// Find the next change notification...
+				FindNextChangeNotification(change_handle);
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+
 	v8::Local<v8::Context> create_shell_context()
 	{
 		// Setup isolate locker...
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
 
-		// Create a template for the global object.
-		v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
+		// Setup our global module.
+		v8pp::module global(isolate);
 
-		// Bind the global 'print' function to the C++ Print callback.
-		global->Set(v8::String::NewFromUtf8(isolate, "print").ToLocalChecked(), v8::FunctionTemplate::New(isolate, print));
+		// print(msg: String, ...): void
+		global.set("print", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			for (int i = 0; i < args.Length(); i++)
+			{
+				// Get the string provided by the user.
+				auto string = v8pp::from_v8<const char*>(args.GetIsolate(), args[i]);
 
-		// Bind the global 'load' function to the C++ Load callback.
-		global->Set(v8::String::NewFromUtf8(isolate, "load").ToLocalChecked(), v8::FunctionTemplate::New(isolate, load));
+				// Check if first item.
+				if (i != 0) vs_printf(" ");
 
-		////////////////////////////////
+				// Print contents provided.
+				vs_printf("%s", string);
+			}
 
-		// Bind the 'registerDraw' function
-		global->Set(v8::String::NewFromUtf8(isolate, "registerBeginRequest").ToLocalChecked(),
-			v8::FunctionTemplate::New(isolate, register_begin_request));
+			vs_printf("\n");
+			fflush(stdout);
+		});
 
-		return v8::Context::New(isolate, NULL, global);
+		// load(fileName: String, ...): void
+		global.set("load", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			for (int i = 0; i < args.Length(); i++)
+			{
+				// Get the name of the file provided by the user.
+				auto name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[i]);
+
+				// Get the path with our file name.
+				auto path = get_path(name);
+
+				// Execute the file in v8.
+				execute_file(path.c_str());
+			}
+		});
+
+		// registerBeginRequest(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
+		global.set("registerBeginRequest", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1) throw std::exception("invalid function signature");
+			if (!args[0]->IsFunction()) throw std::exception("invalid first parameter, must be a function");
+
+			function_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(args[0]));
+		});
+
+		////////////////////////////////////////
+
+		// ipc Property
+		v8pp::module ipc_module(isolate);
+		//ipc_module.set("get", []() {
+		//	vs_printf("test called \n");
+		//});
+
+		// ipc Object
+		global.set_const("ipc", ipc_module);
+
+		////////////////////////////////////////
+
+		return v8::Context::New(isolate, NULL, global.obj_);
 	}
 
 	void initialize_objects()
@@ -337,7 +427,7 @@ namespace v8_wrapper
 
 				// Insert the data chunks into the response.
 				auto hr = p_http_response->WriteEntityChunks(data_chunk, 1, FALSE, FALSE, &cb_sent);
-
+				 
 				// Check if we succeeded.
 				return SUCCEEDED(hr);
 			});
@@ -348,7 +438,7 @@ namespace v8_wrapper
 				if (!p_http_response) throw std::exception("invalid p_http_response for setHeader");
 
 				// Check arguments.
-				if ( args.Length() < 2
+				if (args.Length() < 2
 					|| !args[0]->IsString() 
 					|| !args[1]->IsString()) 
 					throw std::exception("invalid signature for setHeader");
@@ -508,7 +598,7 @@ namespace v8_wrapper
 
 		// Reset our pointers...
 		p_http_request = nullptr;
-		p_http_response = nullptr;
+		p_http_response = nullptr; 
 
 		// Check if our function returned anything...
 		if (result.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
@@ -529,10 +619,7 @@ namespace v8_wrapper
 			// Setup our ip address variable...
 			char ip_address[INET_ADDRSTRLEN] = { 0 };
 
-			// Cast our address to a socket.
 			auto socket = (sockaddr_in*)address;
-
-			// Get our ip address...
 			InetNtopA(socket->sin_family, &socket->sin_addr, ip_address, sizeof(ip_address));
 
 			return std::string(ip_address);
@@ -541,11 +628,8 @@ namespace v8_wrapper
 		{
 			// Setup our ip address variable...
 			char ip_address[INET6_ADDRSTRLEN] = { 0 };
-
-			// Cast our address to a socket.
 			auto socket = (sockaddr_in6*)address;
 
-			// Get our ip address...
 			InetNtopA(socket->sin6_family, &socket->sin6_addr, ip_address, sizeof(ip_address));
 
 			return std::string(ip_address);
@@ -613,63 +697,14 @@ namespace v8_wrapper
 		return true;
 	}
 
-	void print(const v8::FunctionCallbackInfo<v8::Value>& args)
-	{
-		// Setup context...
-		v8::Locker locker(isolate);
-		v8::Isolate::Scope isolate_scope(isolate);
-		v8::HandleScope handle_scope(isolate);
-		v8::Context::Scope context_scope(context.Get(isolate));
-
-		bool first = true;
-		for (int i = 0; i < args.Length(); i++)
-		{
-			v8::HandleScope handle_scope(isolate);
-			if (first) {
-				first = false;
-			}
-			else {
-				vs_printf( " ");
-			}
-			v8::String::Utf8Value str(isolate, args[i]);
-			const char* cstr = c_string(str);
-			vs_printf( "%s", cstr);
-		}
-		vs_printf( "\n");
-		fflush(stdout);
-	}
-
-	void register_begin_request(const v8::FunctionCallbackInfo<v8::Value>& args)
+	void execute_file(const wchar_t * name)
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
 		v8::HandleScope handle_scope(isolate);
 		v8::Context::Scope context_scope(context.Get(isolate));
 
-		// Check if args given...
-		if (args.Length() < 1) return;
-
-		// Get our arguments...
-		v8::Local<v8::Value> arg = args[0];
-
-		// Check if arg is a function...
-		if (!arg->IsFunction())
-		{
-			return;
-		}
-
-		// Reset our global function...
-		function_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(arg));
-	}
-
-	void read_file(const char* name)
-	{
-		v8::Locker locker(isolate);
-		v8::Isolate::Scope isolate_scope(isolate);
-		v8::HandleScope handle_scope(isolate);
-		v8::Context::Scope context_scope(context.Get(isolate));
-
-		FILE* file = fopen(name, "rb");
+		FILE* file = _wfopen(name, L"rb");
 		if (file == NULL) return;
 
 		fseek(file, 0, SEEK_END);
@@ -694,26 +729,8 @@ namespace v8_wrapper
 
 		delete[] chars;
 
-		vs_printf( "Loaded %s successfully...\n", name);
+		vs_printf("Loaded %ws successfully...\n", name);
 		fflush(stdout);
-	}
-
-	void load(const v8::FunctionCallbackInfo<v8::Value>& args) {
-		v8::HandleScope handle_scope(isolate);
-
-		for (int i = 0; i < args.Length(); i++)
-		{
-			v8::HandleScope handle_scope(isolate);
-			v8::String::Utf8Value file(isolate, args[i]);
-			if (*file == NULL) {
-				isolate->ThrowException(
-					v8::String::NewFromUtf8(isolate, "Error loading file",
-						v8::NewStringType::kNormal).ToLocalChecked());
-				return;
-			}
-
-			read_file(*file);
-		}
 	}
 
 	void report_exception(v8::TryCatch * try_catch)
