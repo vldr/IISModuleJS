@@ -3,6 +3,8 @@
 
 namespace v8_wrapper
 {
+	namespace fs = std::experimental::filesystem;
+
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
 	v8::Global<v8::Function> function_begin_request;
@@ -22,9 +24,8 @@ namespace v8_wrapper
 
 		// Setup our engine thread.
 		std::thread engine_thread([app_pool_name] { 
-			// Setup our db.
-			db = simdb("test", 1024, 4096);
-			db.flush();
+			// Setup our db.;
+			db = simdb(std::string(app_pool_name.begin(), app_pool_name.end()).c_str(), 1024, 4096);
 
 			// Set our app pool name up.
 			script_name = app_pool_name;
@@ -48,9 +49,6 @@ namespace v8_wrapper
 
 			// Setup our isolate...
 			isolate = v8::Isolate::New(create_params);
-
-			// Reset our engine...
-			reset_engine();
 
 			//////////////////////////////////////////
 
@@ -83,8 +81,11 @@ namespace v8_wrapper
 			count++;
 
 			// Sleep for a second.
-			Sleep(1000);
-		} while (!log_file);
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		} 
+		while (!log_file);
+
+		//////////////////////////////////////////
 	}
 
 	void reset_engine()
@@ -107,8 +108,6 @@ namespace v8_wrapper
 
 	std::experimental::filesystem::path get_path(std::wstring script = std::wstring())
 	{
-		namespace fs = std::experimental::filesystem;
-
 		//////////////////////////////////////////
 
 		// String containing our documents path.
@@ -149,47 +148,41 @@ namespace v8_wrapper
 
 	void load_and_watch()
 	{
-		// Get our working directory path to monitor for changes.
-		auto working_directory = get_path();
+
+		//////////////////////////////////////////
 
 		// Get our working directory path to monitor for changes.
 		auto script_path = get_path(script_name);
 
 		//////////////////////////////////////////
 
-		// Read our file...
-		execute_file(script_path.c_str());
-		 
-		//////////////////////////////////////////
+		// Setup our last write.
+		fs::file_time_type last_write;
+		std::error_code ec;
 
-		// Setup our last write change handle...
-		HANDLE change_handle = FindFirstChangeNotificationW(working_directory.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
-
-		// Loop forever... 
 		for (;;)
 		{
-			// Wait infinitely for our change handle...
-			DWORD wait_handle = WaitForSingleObject(change_handle, INFINITE);
-
-			if (wait_handle == WAIT_OBJECT_0)
+			// Check if our file exists, and last write has changed
+			if (last_write != fs::last_write_time(script_path, ec) && !ec)
 			{
-				// Inform user...
-				printf("Resetting and reloading \"%ws\" script...\n", script_name.c_str());
+				// Update our last write.
+				last_write = fs::last_write_time(script_path);
 
-				// Reset our engine...
+				// Log our action.
+				printf("Resetting engine and loading \"%ws\" script...\n", script_name.c_str());
+
+				// Reset our engine by creating a new contex.
 				reset_engine();
 
-				// Read our file again...
+				// Execute our file using the script path.
 				execute_file(script_path.c_str());
+			}
 
-				// Find the next change notification...
-				FindNextChangeNotification(change_handle);
-			}
-			else
-			{
-				break;
-			}
-		}
+			// Sleep for one second.
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}		
+		
+		//////////////////////////////////////////
 	}
 
 	v8::Local<v8::Context> create_shell_context()
