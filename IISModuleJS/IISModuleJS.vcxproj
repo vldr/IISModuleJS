@@ -108,6 +108,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/EXPORT:RegisterModule %(AdditionalOptions)</AdditionalOptions>
+      <SubSystem>Console</SubSystem>
     </Link>
     <PreBuildEvent>
       <Command>iisreset /stop

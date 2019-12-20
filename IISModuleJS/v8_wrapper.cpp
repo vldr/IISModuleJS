@@ -1,4 +1,5 @@
 #include "v8_wrapper.h"
+#include <simdb/simdb.hpp>
 
 namespace v8_wrapper
 {
@@ -10,21 +11,36 @@ namespace v8_wrapper
 
 	IHttpResponse * p_http_response = nullptr;
 	IHttpRequest * p_http_request = nullptr;
-	std::wstring script_name;
 
+	std::wstring script_name;
+	simdb db;
+	
 	void start(std::wstring app_pool_name)
 	{
-		// Set our app pool name up.
-		script_name = app_pool_name + L".js";
+		// Start logging.
+		start_logging(app_pool_name);
 
-		std::thread engine_thread([] {
+		// Setup our engine thread.
+		std::thread engine_thread([app_pool_name] { 
+			// Setup our db.
+			db = simdb("test", 1024, 4096);
+			db.flush();
+
+			// Set our app pool name up.
+			script_name = app_pool_name;
+			script_name.append(L".js");
+
 			// Initialize...
 			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
-
+			
 			v8::V8::InitializePlatform(platform.get());
 			v8::V8::InitializeICU();
 			v8::V8::Initialize();
-
+#ifdef _DEBUG
+			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --trace-opt");
+#else
+			v8::V8::SetFlagsFromString("--always-opt");
+#endif
 			// Setup create params...
 			v8::Isolate::CreateParams create_params;
 
@@ -42,6 +58,33 @@ namespace v8_wrapper
 			load_and_watch();
 		});
 		engine_thread.detach();
+	}
+
+	void start_logging(std::wstring app_pool_name)
+	{
+		//////////////////////////////////////////
+
+		// Our log file pointer.
+		FILE * log_file = nullptr;
+
+		// Our counter.
+		int count = 0;
+
+		// Redirect stdout to our log file...
+		do
+		{
+			// Setup our log file...
+			auto log_file_path = get_path(app_pool_name + L"-log." + std::to_wstring(count) + L".txt");
+
+			// Attempt to open the log file.
+			log_file = _wfreopen(log_file_path.c_str(), L"w", stdout);
+
+			// Increment our count.
+			count++;
+
+			// Sleep for a second.
+			Sleep(1000);
+		} while (!log_file);
 	}
 
 	void reset_engine()
@@ -72,7 +115,7 @@ namespace v8_wrapper
 		PWSTR known_folder = nullptr;
 		
 		// Fetch our documents path.
-		auto hr = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, (HANDLE)-1, &known_folder);
+		auto hr = SHGetKnownFolderPath(FOLDERID_Public, 0, (HANDLE)-1, &known_folder);
 
 		// Check if our hr failed...
 		if (FAILED(hr)) throw std::exception("unable to get known folder");
@@ -131,7 +174,7 @@ namespace v8_wrapper
 			if (wait_handle == WAIT_OBJECT_0)
 			{
 				// Inform user...
-				vs_printf("Resetting and reloading \"%ws\" script...\n", script_name.c_str());
+				printf("Resetting and reloading \"%ws\" script...\n", script_name.c_str());
 
 				// Reset our engine...
 				reset_engine();
@@ -166,14 +209,14 @@ namespace v8_wrapper
 				auto string = v8pp::from_v8<const char*>(args.GetIsolate(), args[i]);
 
 				// Check if first item.
-				if (i != 0) vs_printf(" ");
+				if (i != 0) printf(" ");
 
 				// Print contents provided.
-				vs_printf("%s", string);
+				printf("%s", string);
 			}
 
-			vs_printf("\n");
-			fflush(stdout);
+			// Print a newline.
+			printf("\n");
 		});
 
 		// load(fileName: String, ...): void
@@ -203,9 +246,77 @@ namespace v8_wrapper
 
 		// ipc Property
 		v8pp::module ipc_module(isolate);
-		//ipc_module.set("get", []() {
-		//	vs_printf("test called \n");
-		//});
+
+		// ipc.set(key: String, value: Object): bool
+		ipc_module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			// Check if atleast one argument was provided.
+			if (args.Length() < 2) throw std::exception("invalid function signature for ipc.put");
+
+			// Check if our first parameter is a string.
+			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.put");
+
+			/////////////////////////////////////////////
+
+			// Stringify our second object.
+			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+			// Stringify our second object.
+			auto value = v8::JSON::Stringify(args.GetIsolate()->GetCurrentContext(), args[1]);
+
+			// Check if we were successful in stringifying.
+			if (value.IsEmpty()) throw std::exception("invalid second parameter for ipc.put");
+
+			/////////////////////////////////////////////
+
+			// Our value string.
+			auto value_string = v8pp::from_v8<std::string>(args.GetIsolate(), value.ToLocalChecked());
+
+			// Attempt to get our key.
+			auto result = db.put(key, value_string);
+
+			// Check if our result was successful.
+			if (!result) throw std::exception("unable to put value for ipc.put");
+		});
+
+		// ipc.get(key: String): Object || null
+		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			// Need this to return our custom object.
+			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate());
+			
+			// Check if atleast one argument was provided.
+			if (args.Length() < 1) throw std::exception("invalid function signature for ipc.get");
+
+			// Check if our first parameter is a string.
+			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.get");
+
+			// Attempt to get our key. 
+			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+			// Our string containing our value.
+			auto value = std::string();
+
+			// Attempt to get our key.
+			auto result = db.get(key, &value);
+
+			// Check if the key exists.
+			if (result)
+			{
+				// Get our value string.
+				auto value_v8_string = v8pp::to_v8(args.GetIsolate(), value);
+
+				// Parse our value string to an object
+				auto value_v8_object = v8::JSON::Parse(args.GetIsolate()->GetCurrentContext(), value_v8_string);
+
+				// Check if we were successful in the conversion.
+				if (value_v8_object.IsEmpty()) throw std::exception("unable to parse object for ipc.get");
+
+				// Return the object using an escapable handle.
+				args.GetReturnValue().Set(escapable_handle_scope.Escape(value_v8_object.ToLocalChecked()));
+				return;
+			}
+
+			RETURN_NULL
+		});
 
 		// ipc Object
 		global.set_const("ipc", ipc_module);
@@ -373,7 +484,7 @@ namespace v8_wrapper
 				RETURN_NULL
 			});
 
-			// write(body: String, mimetype: String): bool
+			// write(body: String || Uint8Array, mimetype: String): bool
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!p_http_response) throw std::exception("invalid p_http_response for write");
@@ -383,8 +494,8 @@ namespace v8_wrapper
 
 				// Setup our length and body which will
 				// be used to deliver our content.
-				std::vector<unsigned char> body_vector;
 				std::string body_string;
+				v8::ArrayBuffer::Contents uint8_array_buffer;
 
 				PVOID body = nullptr;
 				size_t size = 0; 
@@ -398,12 +509,12 @@ namespace v8_wrapper
 					size = body_string.length() * sizeof(char);
 				}
 				// Or if an array was provided.
-				else if (args[0]->IsArray())
+				else if (args[0]->IsUint8Array())
 				{
-					body_vector = v8pp::from_v8<std::vector<unsigned char>>(args.GetIsolate(), args[0]);
+					uint8_array_buffer = args[0].As<v8::Uint8Array>()->Buffer()->GetContents();
 
-					body = (PVOID)body_vector.data();
-					size = body_vector.size() * sizeof(unsigned char);
+					body = (PVOID)uint8_array_buffer.Data();
+					size = uint8_array_buffer.ByteLength() * sizeof(unsigned char);
 				}
 				else throw std::exception("invalid first argument type for write");
 
@@ -618,8 +729,8 @@ namespace v8_wrapper
 		{
 			// Setup our ip address variable...
 			char ip_address[INET_ADDRSTRLEN] = { 0 };
-
 			auto socket = (sockaddr_in*)address;
+
 			InetNtopA(socket->sin_family, &socket->sin_addr, ip_address, sizeof(ip_address));
 
 			return std::string(ip_address);
@@ -691,7 +802,7 @@ namespace v8_wrapper
 			v8::String::Utf8Value str(isolate, result);
 			const char* cstr = c_string(str);
 
-			vs_printf("%s\n", cstr);
+			printf("%s\n", cstr);
 		}
 
 		return true;
@@ -729,7 +840,7 @@ namespace v8_wrapper
 
 		delete[] chars;
 
-		vs_printf("Loaded %ws successfully...\n", name);
+		printf("Loaded %ws successfully...\n", name);
 		fflush(stdout);
 	}
 
@@ -747,34 +858,34 @@ namespace v8_wrapper
 
 		if (message.IsEmpty())
 		{
-			vs_printf( "%s\n", exception_string);
+			printf("%s\n", exception_string);
 		}
 		else {
 			v8::Local<v8::Context> context(isolate->GetCurrentContext());
 			int linenum = message->GetLineNumber(context).FromJust();
 
-			vs_printf( "%i: %s\n", linenum, exception_string);
+			printf("%i: %s\n", linenum, exception_string);
 
 			v8::String::Utf8Value sourceline(isolate, message->GetSourceLine(context).ToLocalChecked());
 			const char* sourceline_string = c_string(sourceline);
-			vs_printf( "%s\n", sourceline_string);
+			printf("%s\n", sourceline_string);
 
 			int start = message->GetStartColumn(context).FromJust();
 			for (int i = 0; i < start; i++) {
-				vs_printf( " ");
+				printf(" ");
 			}
 			int end = message->GetEndColumn(context).FromJust();
 			for (int i = start; i < end; i++) {
-				vs_printf( "^");
+				printf("^");
 			}
-			vs_printf( "\n");
+			printf("\n");
 			v8::Local<v8::Value> stack_trace_string;
 			if (try_catch->StackTrace(context).ToLocal(&stack_trace_string) &&
 				stack_trace_string->IsString() &&
 				v8::Local<v8::String>::Cast(stack_trace_string)->Length() > 0) {
 				v8::String::Utf8Value stack_trace(isolate, stack_trace_string);
 				const char* stack_trace_string = c_string(stack_trace);
-				vs_printf( "%s\n", stack_trace_string);
+				printf("%s\n", stack_trace_string);
 			}
 		}
 	}
@@ -783,19 +894,4 @@ namespace v8_wrapper
 	{
 		return *value ? *value : "<string conversion failed>";
 	}
-
-	int __cdecl vs_printf(const char *format, ...)
-	{
-		char str[1024];
-
-		va_list argptr;
-		va_start(argptr, format);
-		int ret = vsnprintf(str, sizeof(str), format, argptr);
-		va_end(argptr);
-
-		OutputDebugStringA(str);
-
-		return ret;
-	}
-
 }

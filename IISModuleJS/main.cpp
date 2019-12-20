@@ -12,4 +12,4 @@ HRESULT __stdcall RegisterModule(DWORD dwServerVersion, IHttpModuleRegistrationI
 	return pModuleInfo->SetRequestNotifications(new ModuleFactory(),
 			RQ_BEGIN_REQUEST,
 		0); 
-}
+} 
