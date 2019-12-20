@@ -18,19 +18,17 @@ namespace v8_wrapper
 	simdb db;
 	
 	void start(std::wstring app_pool_name)
-	{
-		// Start logging.
-		start_logging(app_pool_name);
-
+	{ 
 		// Setup our engine thread.
 		std::thread engine_thread([app_pool_name] { 
 			// Setup our db.;
-			db = simdb(std::string(app_pool_name.begin(), app_pool_name.end()).c_str(), 1024, 4096);
+			db = simdb("test", 1024, 4096);
+			db.flush();
 
 			// Set our app pool name up.
 			script_name = app_pool_name;
 			script_name.append(L".js");
-
+			 
 			// Initialize...
 			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
 			
@@ -40,7 +38,7 @@ namespace v8_wrapper
 #ifdef _DEBUG
 			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --trace-opt");
 #else
-			v8::V8::SetFlagsFromString("--always-opt");
+			v8::V8::SetFlagsFromString("--always-opt"); 
 #endif
 			// Setup create params...
 			v8::Isolate::CreateParams create_params;
@@ -56,36 +54,6 @@ namespace v8_wrapper
 			load_and_watch();
 		});
 		engine_thread.detach();
-	}
-
-	void start_logging(std::wstring app_pool_name)
-	{
-		//////////////////////////////////////////
-
-		// Our log file pointer.
-		FILE * log_file = nullptr;
-
-		// Our counter.
-		int count = 0;
-
-		// Redirect stdout to our log file...
-		do
-		{
-			// Setup our log file...
-			auto log_file_path = get_path(app_pool_name + L"-log." + std::to_wstring(count) + L".txt");
-
-			// Attempt to open the log file.
-			log_file = _wfreopen(log_file_path.c_str(), L"w", stdout);
-
-			// Increment our count.
-			count++;
-
-			// Sleep for a second.
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-		} 
-		while (!log_file);
-
-		//////////////////////////////////////////
 	}
 
 	void reset_engine()
@@ -169,7 +137,7 @@ namespace v8_wrapper
 				last_write = fs::last_write_time(script_path);
 
 				// Log our action.
-				printf("Resetting engine and loading \"%ws\" script...\n", script_name.c_str());
+				vs_printf("Resetting engine and loading \"%ws\" script...\n", script_name.c_str());
 
 				// Reset our engine by creating a new contex.
 				reset_engine();
@@ -199,17 +167,17 @@ namespace v8_wrapper
 			for (int i = 0; i < args.Length(); i++)
 			{
 				// Get the string provided by the user.
-				auto string = v8pp::from_v8<const char*>(args.GetIsolate(), args[i]);
+				auto string = v8pp::from_v8<std::string>(args.GetIsolate(), args[i]);
 
 				// Check if first item.
-				if (i != 0) printf(" ");
+				if (i != 0) vs_printf(" ");
 
 				// Print contents provided.
-				printf("%s", string);
+				vs_printf("%s", string.c_str());
 			}
 
 			// Print a newline.
-			printf("\n");
+			vs_printf("\n");
 		});
 
 		// load(fileName: String, ...): void
@@ -253,22 +221,31 @@ namespace v8_wrapper
 			// Stringify our second object.
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
-			// Stringify our second object.
-			auto value = v8::JSON::Stringify(args.GetIsolate()->GetCurrentContext(), args[1]);
-
-			// Check if we were successful in stringifying.
-			if (value.IsEmpty()) throw std::exception("invalid second parameter for ipc.put");
-
 			/////////////////////////////////////////////
 
-			// Our value string.
-			auto value_string = v8pp::from_v8<std::string>(args.GetIsolate(), value.ToLocalChecked());
+			// Setup our serializer delegate to handle all our data.
+			SerializerDelegate serializer_delegate(args.GetIsolate());
 
-			// Attempt to get our key.
-			auto result = db.put(key, value_string);
+			// Setup our value serializer that will actually perform the serialization.
+			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
 
-			// Check if our result was successful.
-			if (!result) throw std::exception("unable to put value for ipc.put");
+			// Write our value.
+			auto result = serializer.WriteValue(args.GetIsolate()->GetCurrentContext(), args[1]).FromMaybe(false);
+
+			// Check if we were able to successfully write our value to the serializer.
+			if (result)
+			{
+				// Release the buffer.
+				std::pair<uint8_t*, size_t> buffer = serializer.Release();
+
+				// Place the value in the key-value store.
+				result = db.put(key.data(), key.length(), buffer.first, buffer.second);
+
+				// Free the buffer after we've placed it into our key-value store.
+				serializer_delegate.FreeBufferMemory(buffer.first);
+			}
+
+			RETURN_THIS(result)
 		});
 
 		// ipc.get(key: String): Object || null
@@ -285,30 +262,62 @@ namespace v8_wrapper
 			// Attempt to get our key. 
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
-			// Our string containing our value.
-			auto value = std::string();
+			/////////////////////////////////////////////
 
-			// Attempt to get our key.
-			auto result = db.get(key, &value);
+			// Length of the buffer to create..
+			simdb::u32 len = 0;
 
-			// Check if the key exists.
-			if (result)
+			// Get the length of the object.
+			db.len(key, &len);
+
+			// Check if our length is not zero.
+			if (!len) RETURN_NULL
+
+			/////////////////////////////////////////////
+
+			// Allocate our buffer...
+			auto buffer = new uint8_t[len];
+
+			if (!buffer)
 			{
-				// Get our value string.
-				auto value_v8_string = v8pp::to_v8(args.GetIsolate(), value);
-
-				// Parse our value string to an object
-				auto value_v8_object = v8::JSON::Parse(args.GetIsolate()->GetCurrentContext(), value_v8_string);
-
-				// Check if we were successful in the conversion.
-				if (value_v8_object.IsEmpty()) throw std::exception("unable to parse object for ipc.get");
-
-				// Return the object using an escapable handle.
-				args.GetReturnValue().Set(escapable_handle_scope.Escape(value_v8_object.ToLocalChecked()));
-				return;
+				throw std::exception("unable to allocate for ipc.get");
 			}
 
-			RETURN_NULL
+			// Attempt to get our key.
+			db.get(
+				key.c_str(),
+				buffer,
+				len
+			);
+
+			/////////////////////////////////////////////
+
+			// Setup our deserializer delegate.
+			DeserializerDelegate deserializer_delegate(args.GetIsolate());
+
+			// Setup our value deserializer.
+			v8::ValueDeserializer deserializer(
+				args.GetIsolate(), 
+				buffer, 
+				len, 
+				&deserializer_delegate
+			);
+
+			// Attempt to read the value from the deserializer.
+			auto value = deserializer.ReadValue(args.GetIsolate()->GetCurrentContext());
+
+			// Delete our buffer.
+			delete[] buffer;
+
+			// Check if our value isn't empty, throw an exception otherwise.
+			if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
+
+			// Return our value using an escapable handle.
+			args.GetReturnValue().Set(
+				escapable_handle_scope.Escape(
+					value.ToLocalChecked()
+				)
+			);
 		});
 
 		// ipc Object
@@ -795,7 +804,7 @@ namespace v8_wrapper
 			v8::String::Utf8Value str(isolate, result);
 			const char* cstr = c_string(str);
 
-			printf("%s\n", cstr);
+			vs_printf("%s\n", cstr);
 		}
 
 		return true;
@@ -833,7 +842,7 @@ namespace v8_wrapper
 
 		delete[] chars;
 
-		printf("Loaded %ws successfully...\n", name);
+		vs_printf("Loaded %ws successfully...\n", name);
 		fflush(stdout);
 	}
 
@@ -851,34 +860,34 @@ namespace v8_wrapper
 
 		if (message.IsEmpty())
 		{
-			printf("%s\n", exception_string);
+			vs_printf("%s\n", exception_string);
 		}
 		else {
 			v8::Local<v8::Context> context(isolate->GetCurrentContext());
 			int linenum = message->GetLineNumber(context).FromJust();
 
-			printf("%i: %s\n", linenum, exception_string);
+			vs_printf("%i: %s\n", linenum, exception_string);
 
 			v8::String::Utf8Value sourceline(isolate, message->GetSourceLine(context).ToLocalChecked());
 			const char* sourceline_string = c_string(sourceline);
-			printf("%s\n", sourceline_string);
+			vs_printf("%s\n", sourceline_string);
 
 			int start = message->GetStartColumn(context).FromJust();
 			for (int i = 0; i < start; i++) {
-				printf(" ");
+				vs_printf(" ");
 			}
 			int end = message->GetEndColumn(context).FromJust();
 			for (int i = start; i < end; i++) {
-				printf("^");
+				vs_printf("^");
 			}
-			printf("\n");
+			vs_printf("\n");
 			v8::Local<v8::Value> stack_trace_string;
 			if (try_catch->StackTrace(context).ToLocal(&stack_trace_string) &&
 				stack_trace_string->IsString() &&
 				v8::Local<v8::String>::Cast(stack_trace_string)->Length() > 0) {
 				v8::String::Utf8Value stack_trace(isolate, stack_trace_string);
 				const char* stack_trace_string = c_string(stack_trace);
-				printf("%s\n", stack_trace_string);
+				vs_printf("%s\n", stack_trace_string);
 			}
 		}
 	}
@@ -886,5 +895,19 @@ namespace v8_wrapper
 	const char* c_string(v8::String::Utf8Value& value)
 	{
 		return *value ? *value : "<string conversion failed>";
+	}
+
+	int __cdecl vs_printf(const char *format, ...)
+	{
+		char str[1024];
+
+		va_list argptr;
+		va_start(argptr, format);
+		int ret = vsnprintf(str, sizeof(str), format, argptr);
+		va_end(argptr);
+
+		OutputDebugStringA(str);
+
+		return ret;
 	}
 }
