@@ -58,6 +58,78 @@ namespace v8_wrapper
 		v8::Isolate * _isolate;
 	};
 
+	/**
+	 * Utf8ValueScoped keeps track of a v8::String::Utf8Value
+	 * and provides operators for ease of readability.
+	 */
+	class Utf8ValueScoped
+	{
+	public:
+		Utf8ValueScoped(v8::Isolate * isolate, v8::Local<v8::Value> obj)
+		{
+			if (obj->IsString())
+				m_utf8_value = new v8::String::Utf8Value(isolate, obj);
+		}
+
+		operator void*() const
+		{
+			return **m_utf8_value;
+		}
+
+		operator bool() const
+		{
+			return m_utf8_value != nullptr;
+		}
+
+		operator unsigned long() const
+		{
+			return m_utf8_value->length();
+		}
+
+		~Utf8ValueScoped()
+		{
+			delete m_utf8_value;
+		}
+	private:
+		v8::String::Utf8Value * m_utf8_value;
+	};
+
+	/**
+	 * ArrayBufferScoped keeps track of v8::ArrayBuffer's contents
+	 * and provides operators for ease of readability.
+	 */
+	class ArrayBufferScoped
+	{
+	public:
+		ArrayBufferScoped(v8::Local<v8::Value> obj)
+		{
+			if (obj->IsUint8Array())
+			{
+				m_is_array = true;
+				m_array_buffer = obj.As<v8::Uint8Array>()->Buffer()->GetContents();
+			}
+		}
+
+		operator bool() const
+		{
+			return m_is_array;
+		}
+
+		operator unsigned long() const
+		{
+			return m_array_buffer.ByteLength();
+		}
+
+		operator void*() const
+		{
+			return m_array_buffer.Data();
+		}
+
+	private:
+		bool m_is_array = false;
+		v8::ArrayBuffer::Contents m_array_buffer;
+	};
+
 	REQUEST_NOTIFICATION_STATUS begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest);
 
 	void start(std::wstring app_pool_name);

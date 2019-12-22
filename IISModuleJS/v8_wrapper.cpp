@@ -494,55 +494,80 @@ namespace v8_wrapper
 				// Check arguments.
 				if (args.Length() < 2 || !args[1]->IsString()) throw std::exception("invalid signature for write");
 
-				// Setup our length and body which will
-				// be used to deliver our content.
-				std::string body_string;
-				v8::ArrayBuffer::Contents uint8_array_buffer;
+				////////////////////////////////////////////////
 
-				PVOID body = nullptr;
-				size_t size = 0; 
+				// An empty v8 array buffer which will represent our Uint8Array in javascript.
+				Utf8ValueScoped string(isolate, args[0]);
+				ArrayBufferScoped array_buffer(args[0]);
+
+				// A constant representing the maximum bytes per HTTP_CHUNK_DATA.
+				const unsigned long MAX_BYTES = 65535;
+
+				// Setup our length and buffer which will
+				// be used to deliver our content.
+				void* buffer = nullptr;
+				unsigned long buffer_size = 0;
 
 				// Check if a string was provided.
-				if (args[0]->IsString())
+				if (string)
 				{
-					body_string = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-
-					body = (PVOID)body_string.data();
-					size = body_string.length() * sizeof(char);
+					buffer = string;
+					buffer_size = string;
 				}
 				// Or if an array was provided.
-				else if (args[0]->IsUint8Array())
+				else if (array_buffer)
 				{
-					uint8_array_buffer = args[0].As<v8::Uint8Array>()->Buffer()->GetContents();
-
-					body = (PVOID)uint8_array_buffer.Data();
-					size = uint8_array_buffer.ByteLength() * sizeof(unsigned char);
+					buffer = array_buffer;
+					buffer_size = array_buffer;
 				}
-				else throw std::exception("invalid first argument type for write");
+				else 
+					throw std::exception("invalid first argument type for write");
 
-				// Check if we have too many bytes...
-				if (size > 65535) throw std::exception("too many bytes in body for write");
+				////////////////////////////////////////////////
 
 				// Get our mimetype.
-				auto mime_type = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+				v8::String::Utf8Value mime_type(isolate, args[0]);
 
-				// Create an array of data chunks.
-				HTTP_DATA_CHUNK data_chunk[1];
-				DWORD cb_sent;
+				// Check the length of the mime type.
+				if (!mime_type.length()) throw std::exception("second argument is invalid for write");
 
 				// Clear and set our header...
-				p_http_response->SetHeader(HttpHeaderContentType, mime_type.c_str(), (USHORT)mime_type.length(), TRUE);
+				p_http_response->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
 
-				// Set the chunk to a chunk in memory.
-				data_chunk[0].DataChunkType = HttpDataChunkFromMemory;
-				data_chunk[0].FromMemory.pBuffer = (PVOID)body;
-				data_chunk[0].FromMemory.BufferLength = (USHORT)size;
+				////////////////////////////////////////////////
 
-				// Insert the data chunks into the response.
-				auto hr = p_http_response->WriteEntityChunks(data_chunk, 1, FALSE, FALSE, &cb_sent);
-				 
-				// Check if we succeeded.
-				return SUCCEEDED(hr);
+				unsigned long buffer_offset = 0;
+				unsigned long bytes_to_write = min(max(buffer_size - buffer_offset, 0), MAX_BYTES);
+				bool has_more_data = buffer_size - bytes_to_write > 0;
+
+				// Loop until we write all our data.
+				do
+				{ 
+					// Create an array of data chunks.
+					HTTP_DATA_CHUNK data_chunk;
+					unsigned long cb_sent = 0;
+					
+					// Set the chunk to a chunk in memory.
+					data_chunk.DataChunkType = HttpDataChunkFromMemory;
+					data_chunk.FromMemory.pBuffer = (PVOID)((unsigned char*)buffer + buffer_offset);
+					data_chunk.FromMemory.BufferLength = (USHORT)bytes_to_write;
+
+					// Insert the data chunks into the response.
+					auto hr = p_http_response->WriteEntityChunks(&data_chunk, 1, FALSE, has_more_data, &cb_sent);
+
+					// Check if our result was not successful.
+					if (FAILED(hr))
+					{
+						throw std::exception("failed to write, error code: " + hr);
+					}
+
+					////////////////////////////////////////
+
+					buffer_offset += bytes_to_write;
+					bytes_to_write = min(max(buffer_size - buffer_offset, 0), MAX_BYTES);
+					has_more_data = buffer_size - buffer_offset > 0;
+					
+				} while (has_more_data);
 			});
 
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool): bool
