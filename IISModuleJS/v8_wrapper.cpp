@@ -796,7 +796,7 @@ namespace v8_wrapper
 			module.set("getLocalAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getLocalAddress");
-				
+
 				RETURN_THIS(
 					sock_to_ip(
 						HTTP_REQUEST->GetLocalAddress()
@@ -904,34 +904,21 @@ namespace v8_wrapper
 		if (result_value->IsPromise())
 		{	
 			// Our callback returned from the promise.
-			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& info)
+			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& args)
 			{
-				// Cast our data object as a promise value.
-				auto objects = info.Data().As<v8::Array>();
-
-				auto promise = objects->Get(isolate->GetCurrentContext(), 0)
-					.ToLocalChecked()
-					.As<v8::Promise>();
-
-				auto http_context = (IHttpContext*)objects->Get(isolate->GetCurrentContext(), 1)
-					.ToLocalChecked()
-					.As<v8::External>()->Value();
-
 				//////////////////////////////////////////////////////
 
 				// Set our default notification status.
 				int request_notification_status = 0;
 
-				// Check if the promise was fulfilled.
-				if (promise->State() == v8::Promise::kFulfilled)
-					request_notification_status = v8pp::from_v8<int>(
-						isolate, 
-						promise->Result(), 
-						0
-					);
-				// Otherwise, kill the execution and throw an exception.
-				else 
-					v8pp::throw_ex(isolate, "the promise yielded a rejected state");
+				// Check if our callback contains a number, and 
+				if (args.Length() == 1 && args[0]->IsNumber())
+				{
+					request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0);
+				}
+
+				// Cast our given Data,
+				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
 					
 				// Regardless of any result,
 				// we need to indicate that the we've completed
@@ -944,17 +931,12 @@ namespace v8_wrapper
 			////////////////////////////////////////////////
 
 			auto promise = result_value.As<v8::Promise>();
-			auto external = v8::External::New(isolate, pHttpContext);
-
-			v8::Local<v8::Value> objects[2] = { promise, external };
-
-			auto array = v8::Array::New(isolate, objects, 2);
 
 			// Create our callback function.
 			auto function = v8::Function::New(
 				isolate->GetCurrentContext(),
 				callback,
-				array
+				v8::External::New(isolate, pHttpContext)
 			).ToLocalChecked();
 			
 			// Attach our callback function to our promise to handle both scenarios.
