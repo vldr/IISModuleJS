@@ -156,7 +156,7 @@ namespace v8_wrapper
 	std::string sock_to_ip(PSOCKADDR address);
 	bool execute_string(char * str, bool print_result, bool report_exceptions);
 	const char* c_string(v8::String::Utf8Value& value);
-	int __cdecl vs_printf(const char *format, ...);
+	int vs_printf(const char *format, ...);
 
 	v8::Local<v8::Context> create_shell_context();
 }

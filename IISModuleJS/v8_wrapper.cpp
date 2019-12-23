@@ -193,8 +193,8 @@ namespace v8_wrapper
 			}
 		});
 
-		// registerBeginRequest(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
-		global.set("registerBeginRequest", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		// register(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
+		global.set("register", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1) throw std::exception("invalid function signature");
 			if (!args[0]->IsFunction()) throw std::exception("invalid first parameter, must be a function");
 
@@ -204,30 +204,33 @@ namespace v8_wrapper
 		////////////////////////////////////////
 
 		// http Property
-		v8pp::module http_module(isolate);
+		v8pp::module http_module(isolate);	
 
-		// http.get(hostname: String, query: String, isSsl: bool, headers: Map<String, String> {optional}): Promise
-		http_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		// http.fetch(
+		//	   hostname: String
+		//	   path: String, 
+		//	   isSSL: bool,
+		//	   method: String {optional, GET}, 
+		//     params: Object<String, String> {optional}
+		// ): Promise
+		http_module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			// Check argument length.
-			if (args.Length() < 3) throw std::exception("invalid function signature for http.get");
+			if (args.Length() < 3) throw std::exception("invalid function signature for http.fetch");
 
-			// Hostname, ex: google.com
+			// Arguments pertaining to fetch.
 			auto hostname = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-
-			// Query, ex /api/v1
-			auto query = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
-
-			// Is SSL, is this is a secure socket website?
+			auto path = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
 			auto is_ssl = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+			auto method = v8pp::from_v8<std::string>(args.GetIsolate(), args[3], "GET");
 
-			// The headers for the request.
-			httplib::Headers headers;
+			// Setup our params if we we're given them.
+			httplib::Params params; 
 
-			// Check if headers we're provided.
-			if (args.Length() >= 4 && args[3]->IsObject())
+			// Check if we were given our fifth argument.
+			if (args.Length() >= 5 && args[4]->IsObject())
 			{
 				auto context = args.GetIsolate()->GetCurrentContext();
-				auto object = args[3].As<v8::Object>();
+				auto object = args[4].As<v8::Object>();
 				auto prop_names = object->GetPropertyNames(context).ToLocalChecked();
 
 				for (uint32_t i = 0, count = prop_names->Length(); i < count; ++i)
@@ -235,36 +238,49 @@ namespace v8_wrapper
 					v8::Local<v8::Value> key = prop_names->Get(context, i).ToLocalChecked();
 					v8::Local<v8::Value> val = object->Get(context, key).ToLocalChecked();
 
-					headers.emplace(v8pp::from_v8<std::string>(isolate, key), v8pp::from_v8<std::string>(isolate, val));
+					params.emplace(
+						v8pp::from_v8<std::string>(isolate, key), 
+						v8pp::from_v8<std::string>(isolate, val)
+					);
 				}
 			}
-			
+
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(args.GetIsolate()->GetCurrentContext()).ToLocalChecked();
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(args.GetIsolate(), resolver);
 
 			// Set the return value to our promise.
 			args.GetReturnValue().Set(
-				resolver->GetPromise()
+				resolver_global.Get(isolate)->GetPromise()
 			);
 
 			// Our request thread.
-			std::thread request_thread([resolver = std::move(resolver_global), hostname, query, is_ssl, headers] {
+			std::thread request_thread([
+				resolver = std::move(resolver_global), 
+				hostname, 
+				path,
+				is_ssl,
+				method,
+				params
+			] {
 				std::shared_ptr<httplib::Response> response;
 
-				// Use SSLClient is our endpoint is secure socket.
+				// Use httplib::SSLClient if our endpoint is secure socket.
 				if (is_ssl)
 				{
 					httplib::SSLClient client(hostname);
 					client.enable_server_certificate_verification(false);
 
-					response = client.Get(query.c_str(), headers);
+					if (method == "GET") response = client.Get(path.c_str());
+					else if (method == "POST") response = client.Post(path.c_str(), params);
 				}
-				// Otherwise, use a client.
+				// Otherwise, use httplib::Client.
 				else
 				{
 					httplib::Client client(hostname);
-					response = client.Get(query.c_str(), headers);
+
+					if (method == "GET") response = client.Get(path.c_str());
+					else if (method == "POST") response = client.Post(path.c_str(), params);
 				}
 
 				//////////////////////////////////////////
@@ -281,7 +297,7 @@ namespace v8_wrapper
 				{
 					resolver.Get(isolate)->Reject(
 						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, "unable to connect to the given server.")
+						v8pp::to_v8(isolate, "unable to fetch")
 					);
 
 					return;
@@ -302,7 +318,6 @@ namespace v8_wrapper
 			request_thread.detach();
 		});
 
-
 		////////////////////////////////////////
 
 		// ipc Property
@@ -320,7 +335,7 @@ namespace v8_wrapper
 
 			// Stringify our second object.
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-
+			 
 			/////////////////////////////////////////////
 
 			// Setup our serializer delegate to handle all our data.
@@ -903,19 +918,26 @@ namespace v8_wrapper
 		// Check if our result is a promise.
 		if (result_value->IsPromise())
 		{	
+			// Get our promise object.
+			auto promise = result_value.As<v8::Promise>();
+
+			// Check if our promise is already fulfilled or rejected.
+			if (promise->State() == v8::Promise::kFulfilled 
+				|| promise->State() == v8::Promise::kRejected)
+			{
+				// Cast our value to a request notification...
+				return REQUEST_NOTIFICATION_STATUS(
+					v8pp::from_v8<int>(isolate, promise->Result(), 0)
+				);
+			}
+
+			//////////////////////////////////////////////////////
+
 			// Our callback returned from the promise.
 			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& args)
 			{
-				//////////////////////////////////////////////////////
-
 				// Set our default notification status.
-				int request_notification_status = 0;
-
-				// Check if our callback contains a number, and 
-				if (args.Length() == 1 && args[0]->IsNumber())
-				{
-					request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0);
-				}
+				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0);
 
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
@@ -929,8 +951,6 @@ namespace v8_wrapper
 			};
 
 			////////////////////////////////////////////////
-
-			auto promise = result_value.As<v8::Promise>();
 
 			// Create our callback function.
 			auto function = v8::Function::New(
@@ -949,19 +969,10 @@ namespace v8_wrapper
 
 		////////////////////////////////////////////////
 
-		// We should reset our pointer back to nullptr, to prevent use-after.
-		http_request_object->SetAlignedPointerInInternalField(0, nullptr);
-		http_response_object->SetAlignedPointerInInternalField(0, nullptr);
-
-		////////////////////////////////////////////////
-
-		// Our returned value...
-		auto request_notification_status = v8pp::from_v8<int>(isolate, result_value, 0);
-
-		////////////////////////////////////////////////
-
 		// Cast our value to a request notification...
-		return REQUEST_NOTIFICATION_STATUS(request_notification_status);
+		return REQUEST_NOTIFICATION_STATUS(
+			v8pp::from_v8<int>(isolate, result_value, 0)
+		);
 	}
 
 	std::string sock_to_ip(PSOCKADDR address)
@@ -1139,7 +1150,7 @@ namespace v8_wrapper
 		return *value ? *value : "<string conversion failed>";
 	}
 
-	int __cdecl vs_printf(const char *format, ...)
+	int vs_printf(const char *format, ...)
 	{
 		char str[1024];
 
