@@ -1,6 +1,8 @@
 #pragma once
 
 #define _WINSOCKAPI_
+#define NOMINMAX
+#define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <windows.h>
 #include <sal.h>
 #include <ws2tcpip.h>
@@ -8,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <Shlobj.h>
+#include <httplib/httplib.h>
 
 #ifdef _DEBUG
 #pragma comment(lib, "v8_monolith.64.lib")
@@ -19,6 +22,10 @@
 #pragma comment(lib, "dbghelp.lib")
 #endif
 
+#pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "libcrypto.lib")
+#pragma comment(lib, "libssl.lib")
+
 #include <cassert>
 #include <libplatform/libplatform.h>
 #include <v8.h>
@@ -29,6 +36,11 @@
 
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
 #define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
+#define HTTP_REQUEST ((IHttpRequest*)args.This()->GetAlignedPointerFromInternalField(0))
+#define HTTP_RESPONSE ((IHttpResponse*)args.This()->GetAlignedPointerFromInternalField(0))
+
+#define pmax(a,b) (((a) > (b)) ? (a) : (b))
+#define pmin(a,b) (((a) < (b)) ? (a) : (b))
 
 namespace v8_wrapper
 {
@@ -130,7 +142,7 @@ namespace v8_wrapper
 		v8::ArrayBuffer::Contents m_array_buffer;
 	};
 
-	REQUEST_NOTIFICATION_STATUS begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest);
+	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();

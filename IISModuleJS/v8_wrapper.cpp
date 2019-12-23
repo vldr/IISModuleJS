@@ -8,11 +8,11 @@ namespace v8_wrapper
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
 	v8::Global<v8::Function> function_begin_request;
-	v8::Persistent<v8::Context> context;
-	v8::Isolate * isolate = nullptr;
 
-	IHttpResponse * p_http_response = nullptr;
-	IHttpRequest * p_http_request = nullptr;
+	v8::Persistent<v8::Context> context;
+	v8::Isolate * isolate = nullptr; 
+
+	IHttpContext * p_http_context = nullptr;
 
 	std::wstring script_name;
 	simdb db;
@@ -205,6 +205,108 @@ namespace v8_wrapper
 
 		////////////////////////////////////////
 
+		// http Property
+		v8pp::module http_module(isolate);
+
+		// http.get(hostname: String, query: String, isSsl: bool, headers: Map<String, String> {optional}): Promise
+		http_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			// Check argument length.
+			if (args.Length() < 3) throw std::exception("invalid function signature for http.get");
+
+			// Hostname, ex: google.com
+			auto hostname = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+			// Query, ex /api/v1
+			auto query = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+
+			// Is SSL, is this is a secure socket website?
+			auto is_ssl = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+
+			// The headers for the request.
+			httplib::Headers headers;
+
+			// Check if headers we're provided.
+			if (args.Length() >= 4 && args[3]->IsObject())
+			{
+				auto context = args.GetIsolate()->GetCurrentContext();
+				auto object = args[3].As<v8::Object>();
+				auto prop_names = object->GetPropertyNames(context).ToLocalChecked();
+
+				for (uint32_t i = 0, count = prop_names->Length(); i < count; ++i)
+				{
+					v8::Local<v8::Value> key = prop_names->Get(context, i).ToLocalChecked();
+					v8::Local<v8::Value> val = object->Get(context, key).ToLocalChecked();
+
+					headers.emplace(v8pp::from_v8<std::string>(isolate, key), v8pp::from_v8<std::string>(isolate, val));
+				}
+			}
+			
+			// Setup a resolver.
+			auto resolver = v8::Promise::Resolver::New(args.GetIsolate()->GetCurrentContext()).ToLocalChecked();
+			auto resolver_global = v8::Global<v8::Promise::Resolver>(args.GetIsolate(), resolver);
+
+			// Set the return value to our promise.
+			args.GetReturnValue().Set(
+				resolver->GetPromise()
+			);
+
+			// Our request thread.
+			std::thread request_thread([resolver = std::move(resolver_global), hostname, query, is_ssl, headers] {
+				std::shared_ptr<httplib::Response> response;
+
+				// Use SSLClient is our endpoint is secure socket.
+				if (is_ssl)
+				{
+					httplib::SSLClient client(hostname);
+					client.enable_server_certificate_verification(false);
+
+					response = client.Get(query.c_str(), headers);
+				}
+				// Otherwise, use a client.
+				else
+				{
+					httplib::Client client(hostname);
+					response = client.Get(query.c_str(), headers);
+				}
+
+				//////////////////////////////////////////
+				
+				// We should only lock once all of
+				// the thread-blocking functions have finished.
+				v8::Locker locker(isolate);
+				v8::Isolate::Scope isolate_scope(isolate);
+				v8::HandleScope handle_scope(isolate);
+				v8::Context::Scope context_scope(context.Get(isolate));
+
+				// Check if our request was successful.
+				if (!response)
+				{
+					resolver.Get(isolate)->Reject(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, "unable to connect to the given server.")
+					);
+
+					return;
+				}
+
+				// Create a response module.
+				v8pp::module response_module(isolate);
+				response_module.set_const("body", response->body);
+				response_module.set_const("status", response->status);
+
+				// Resolve our request.
+				resolver.Get(isolate)->Resolve(
+					isolate->GetCurrentContext(), 
+					response_module.new_instance()
+				);
+			});
+
+			request_thread.detach();
+		});
+
+
+		////////////////////////////////////////
+
 		// ipc Property
 		v8pp::module ipc_module(isolate);
 
@@ -320,8 +422,13 @@ namespace v8_wrapper
 			);
 		});
 
+		////////////////////////////////////////
+
 		// ipc Object
 		global.set_const("ipc", ipc_module);
+
+		// http Object
+		global.set_const("http", http_module);
 
 		////////////////////////////////////////
 
@@ -346,77 +453,83 @@ namespace v8_wrapper
 			// Setup our functions
 
 			// clear(): void
-			module.set("clear", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for clear");
+			module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for clear");
 
-				p_http_response->Clear();
+				HTTP_RESPONSE->Clear();
 			});		
 
 			// clearHeaders(): void
-			module.set("clearHeaders", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for clearHeaders");
+			module.set("clearHeaders", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for clearHeaders");
 
-				p_http_response->ClearHeaders();
+				HTTP_RESPONSE->ClearHeaders();
 			});
 
 			// closeConnection(): void
-			module.set("closeConnection", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for closeConnection");
+			module.set("closeConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for closeConnection");
 					
-				p_http_response->CloseConnection();
+				HTTP_RESPONSE->CloseConnection();
 				
 			});
 
 			// setNeedDisconnect(): void
-			module.set("setNeedDisconnect", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for setNeedDisconnect");
+			module.set("setNeedDisconnect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setNeedDisconnect");
 					
-				p_http_response->SetNeedDisconnect();
+				HTTP_RESPONSE->SetNeedDisconnect();
 			});
 
 			// getKernelCacheEnabled(): bool
-			module.set("getKernelCacheEnabled", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for getKernelCacheEnabled");
+			module.set("getKernelCacheEnabled", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getKernelCacheEnabled");
 
-				return bool(p_http_response->GetKernelCacheEnabled());
+				return bool(HTTP_RESPONSE->GetKernelCacheEnabled());
 			});	
 
 			// resetConnection(): void
-			module.set("resetConnection", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for resetConnection");
+			module.set("resetConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for resetConnection");
 					
-				p_http_response->ResetConnection();
+				HTTP_RESPONSE->ResetConnection();
 			});
 
 			// disableBuffering(): void
-			module.set("disableBuffering", []() {
-				if (!p_http_response) throw std::exception("invalid p_http_response for disableBuffering");
+			module.set("disableBuffering", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableBuffering");
 					
-				p_http_response->DisableBuffering();
+				HTTP_RESPONSE->DisableBuffering();
 			});
 				
 			// getStatus(): Number
-			module.set("getStatus", []() {
+			module.set("getStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for getStatus");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getStatus");
 
 				// Our status code...
 				USHORT status_code = 0;
 
 				// Get our status code...
-				p_http_response->GetStatus(&status_code);
+				HTTP_RESPONSE->GetStatus(&status_code);
 
 				// Return our result.
 				return status_code;
 			});
 
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): bool
-			module.set("redirect", [](std::string url, bool reset_status_code, bool include_parameters) {
+			module.set("redirect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for redirect");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for redirect");
+				if (args.Length() < 3) throw std::exception("invalid signature for redirect");
+
+				// The parameters by redirect.
+				auto url = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
+				auto include_parameters = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
 
 				// Set our error decription...
-				auto hr  = p_http_response->Redirect(url.c_str(),
+				auto hr  = HTTP_RESPONSE->Redirect(url.c_str(),
 					reset_status_code,
 					include_parameters);
 
@@ -425,12 +538,16 @@ namespace v8_wrapper
 			});
 
 			// setErrorDescription(decription: String, shouldHtmlEncode: bool): bool
-			module.set("setErrorDescription", [](std::wstring description, bool should_html_encode) {
+			module.set("setErrorDescription", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for setErrorDescription");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setErrorDescription");
+				if (args.Length() < 2) throw std::exception("invalid signature for setErrorDescription");
+
+				auto description = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+				auto should_html_encode = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
 
 				// Set our error decription...
-				auto hr  = p_http_response->SetErrorDescription(description.c_str(), 
+				auto hr  = HTTP_RESPONSE->SetErrorDescription(description.c_str(),
 					description.length(), 
 					should_html_encode);
 
@@ -439,33 +556,47 @@ namespace v8_wrapper
 			});
 
 			// disableKernelCache(reason: Number): void
-			module.set("disableKernelCache", [](int reason) {
+			module.set("disableKernelCache", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for disableKernelCache");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableKernelCache");
+				if (args.Length() < 1) throw std::exception("invalid signature for disableKernelCache");
+
+				auto reason = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
 
 				// Disable kernel caching...
-				p_http_response->DisableKernelCache(reason);
+				HTTP_RESPONSE->DisableKernelCache(reason);
+			});
+
+			module.set("indicateCompletion", [](int reason) {
+				// Check if our http response is set.
+				if (!p_http_context) throw std::exception("invalid p_http_context for indicateCompletion");
+
+				// Disable kernel caching...
+				p_http_context->IndicateCompletion((REQUEST_NOTIFICATION_STATUS)reason);
 			});
 
 			// deleteHeader(headerName: String): bool
-			module.set("deleteHeader", [](std::string header_name) {
+			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is valid.
-				if (!p_http_response) throw std::exception("invalid p_http_response for deleteHeader");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for deleteHeader");
+				if (args.Length() < 1) throw std::exception("invalid signature for deleteHeader");
+
+				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
 				// Attempt to get our header. 
-				auto hr = p_http_response->DeleteHeader(header_name.c_str());
+				auto hr = HTTP_RESPONSE->DeleteHeader(header_name.c_str());
 
 				// Check if our header value is valid...
-				return SUCCEEDED(hr);
+				RETURN_THIS(
+					SUCCEEDED(hr)
+				);
 			});
 
 			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for getHeader");
-				
-				// Check arguments.
-				if (args.Length() < 1 || !args[0]->IsString()) throw std::exception("invalid signature for getHeader");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getHeader");
+				if (args.Length() < 1) throw std::exception("invalid signature for getHeader");
 
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
@@ -474,7 +605,7 @@ namespace v8_wrapper
 				USHORT header_value_count = 0;
 
 				// Attempt to get our header. 
-				auto header_value = p_http_response->GetHeader(header_name.c_str(), &header_value_count);
+				auto header_value = HTTP_RESPONSE->GetHeader(header_name.c_str(), &header_value_count);
 
 				// Check if our header value is valid...
 				if (header_value)
@@ -489,7 +620,7 @@ namespace v8_wrapper
 			// write(body: String || Uint8Array, mimetype: String): bool
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for write");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
 
 				// Check arguments.
 				if (args.Length() < 2 || !args[1]->IsString()) throw std::exception("invalid signature for write");
@@ -520,24 +651,23 @@ namespace v8_wrapper
 					buffer = array_buffer;
 					buffer_size = array_buffer;
 				}
-				else 
-					throw std::exception("invalid first argument type for write");
+				else throw std::exception("invalid first argument type for write");
 
 				////////////////////////////////////////////////
 
 				// Get our mimetype.
-				v8::String::Utf8Value mime_type(isolate, args[0]);
+				v8::String::Utf8Value mime_type(isolate, args[1]);
 
 				// Check the length of the mime type.
 				if (!mime_type.length()) throw std::exception("second argument is invalid for write");
 
 				// Clear and set our header...
-				p_http_response->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
+				HTTP_RESPONSE->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
 
 				////////////////////////////////////////////////
 
 				unsigned long buffer_offset = 0;
-				unsigned long bytes_to_write = min(max(buffer_size - buffer_offset, 0), MAX_BYTES);
+				unsigned long bytes_to_write = pmin(pmax(buffer_size - buffer_offset, 0), MAX_BYTES);
 				bool has_more_data = buffer_size - bytes_to_write > 0;
 
 				// Loop until we write all our data.
@@ -553,7 +683,7 @@ namespace v8_wrapper
 					data_chunk.FromMemory.BufferLength = (USHORT)bytes_to_write;
 
 					// Insert the data chunks into the response.
-					auto hr = p_http_response->WriteEntityChunks(&data_chunk, 1, FALSE, has_more_data, &cb_sent);
+					auto hr = HTTP_RESPONSE->WriteEntityChunks(&data_chunk, 1, FALSE, has_more_data, &cb_sent);
 
 					// Check if our result was not successful.
 					if (FAILED(hr))
@@ -564,7 +694,7 @@ namespace v8_wrapper
 					////////////////////////////////////////
 
 					buffer_offset += bytes_to_write;
-					bytes_to_write = min(max(buffer_size - buffer_offset, 0), MAX_BYTES);
+					bytes_to_write = pmin(pmax(buffer_size - buffer_offset, 0), MAX_BYTES);
 					has_more_data = buffer_size - buffer_offset > 0;
 					
 				} while (has_more_data);
@@ -573,27 +703,30 @@ namespace v8_wrapper
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool): bool
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_response) throw std::exception("invalid p_http_response for setHeader");
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setHeader");
 
 				// Check arguments.
 				if (args.Length() < 2
 					|| !args[0]->IsString() 
-					|| !args[1]->IsString()) 
+					|| !args[1]->IsString())  
 					throw std::exception("invalid signature for setHeader");
-
+				 
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
 				auto should_replace = args.Length() >= 3 ? v8pp::from_v8<bool>(args.GetIsolate(), args[2], true) : true;
 
 				// Attempt to get our header. 
-				auto hr = p_http_response->SetHeader( header_name.c_str(), 
+				auto hr = HTTP_RESPONSE->SetHeader( header_name.c_str(),
 					header_value.c_str(), 
 					header_value.length(), 
 					should_replace);  
 
 				RETURN_THIS(SUCCEEDED(hr))
 			});
+
+			// Set our internal field count.
+			module.obj_->SetInternalFieldCount(1);
 
 			// Reset our pointer...
 			global_http_response_object.Reset(isolate, module.new_instance());
@@ -613,64 +746,90 @@ namespace v8_wrapper
 
 			// Gets the method
 			// getMethod(): String
-			module.set("getMethod", []() {
-				if (!p_http_request) throw std::exception("invalid p_http_request for getMethod");
+			module.set("getMethod", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
-				return std::string(p_http_request->GetHttpMethod());
+				RETURN_THIS(
+					std::string(HTTP_REQUEST->GetHttpMethod())
+				)
 			});
 
 			// getAbsPath(): String
-			module.set("getAbsPath", []() {
-				if (!p_http_request) throw std::exception("invalid p_http_request for getMethod");
+			module.set("getAbsPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
-				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pAbsPath, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(wchar_t));
+				RETURN_THIS(
+					std::wstring(
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pAbsPath,
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(wchar_t)
+					)
+				)
 			});
 
 			// getFullUrl(): String
-			module.set("getFullUrl", []() {
-				if (!p_http_request) throw std::exception("invalid p_http_request for getFullUrl");
+			module.set("getFullUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getFullUrl");
 
-				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pFullUrl, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(wchar_t));
+				RETURN_THIS(
+					std::wstring(
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pFullUrl,
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(wchar_t)
+					)
+				)
 			});
 
 			// getQueryString(): String
-			module.set("getQueryString", []() {
-				if (!p_http_request) throw std::exception("invalid p_http_request for getQueryString");
+			module.set("getQueryString", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
-				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pQueryString, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(wchar_t));
+				RETURN_THIS(
+					std::wstring(
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pQueryString,
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(wchar_t)
+					)
+				)
 			});
 
 			// getHost(): String
-			module.set("getHost", []() {
-				if (!p_http_request) throw std::exception("invalid p_http_request for getHost");
+			module.set("getHost", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getHost");
 
-				return std::wstring(p_http_request->GetRawHttpRequest()->CookedUrl.pHost, 
-					p_http_request->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(wchar_t));
+				RETURN_THIS(
+					std::wstring(
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pHost,
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(wchar_t)
+					)
+				)
 			});
 
 			// getLocalAddress(): String
-			module.set("getLocalAddress", []() {
+			module.set("getLocalAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
-				if (!p_http_request) throw std::exception("invalid p_http_request for getLocalAddress");
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getLocalAddress");
 				
-				return sock_to_ip(p_http_request->GetLocalAddress());
+				RETURN_THIS(
+					sock_to_ip(
+						HTTP_REQUEST->GetLocalAddress()
+					)
+				)
 			});
 
 			// getRemoteAddress(): String
-			module.set("getRemoteAddress", []() {
+			module.set("getRemoteAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
-				if (!p_http_request) throw std::exception("invalid p_http_request for getRemoteAddress");
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getRemoteAddress");
 				
-				return sock_to_ip(p_http_request->GetRemoteAddress());
+				RETURN_THIS(
+					sock_to_ip(
+						HTTP_REQUEST->GetRemoteAddress()
+					)
+				)
 			});
 
 			// setHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!p_http_request) throw std::exception("invalid p_http_request for getHeader");
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getHeader");
 
 				// Check arguments.
 				if (args.Length() < 1 || !args[0]->IsString()) throw std::exception("invalid signature for getHeader");
@@ -682,7 +841,7 @@ namespace v8_wrapper
 				USHORT header_value_count = 0;
 
 				// Attempt to get our header. 
-				auto header_value = p_http_request->GetHeader(header_name.c_str(), &header_value_count);
+				auto header_value = HTTP_REQUEST->GetHeader(header_name.c_str(), &header_value_count);
 
 				// Check if our header value is valid...
 				if (header_value)
@@ -694,15 +853,19 @@ namespace v8_wrapper
 				RETURN_NULL
 			});
 
+			module.obj_->SetInternalFieldCount(1);
+
 			// Reset our pointer...
 			global_http_request_object.Reset(isolate, module.new_instance());
 		}
 	}
 
-	REQUEST_NOTIFICATION_STATUS begin_request(IHttpResponse * pHttpResponse, IHttpRequest * pHttpRequest)
+	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext)
 	{
 		// Check if our pointers are null...
-		if (!isolate || !pHttpResponse || !pHttpRequest) return RQ_NOTIFICATION_CONTINUE;
+		if (!isolate) return RQ_NOTIFICATION_CONTINUE;
+
+		vs_printf("status here.\n");
 
 		// Check if our function is empty...
 		if (function_begin_request.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
@@ -717,9 +880,13 @@ namespace v8_wrapper
 		
 		////////////////////////////////////////////////
 
-		// Get our object...
-		auto http_response_object = global_http_response_object.Get(isolate);
-		auto http_request_object = global_http_request_object.Get(isolate);
+		// Clone our arguments to be given to JavaScript.
+		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
+		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
+
+		// Update the pointers.
+		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext->GetResponse());
+		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext->GetRequest());
 
 		// Setup our arguments...
 		v8::Local<v8::Value> argv[2] = { http_response_object, http_request_object };
@@ -727,25 +894,50 @@ namespace v8_wrapper
 		// Setup local function...
 		auto local_function = function_begin_request.Get(isolate);
 
-		// Update our global values...
-		p_http_request = pHttpRequest;
-		p_http_response = pHttpResponse;
+		////////////////////////////////////////////////
+
+		// Update our http context pointer.
+		p_http_context = pHttpContext;
+		
+		////////////////////////////////////////////////
 
 		// Attempt to get our registered create move callback and call it...
-		auto result = local_function->Call(isolate->GetCurrentContext(), v8::Null(isolate), 2, argv);
-
-		// Reset our pointers...
-		p_http_request = nullptr;
-		p_http_response = nullptr; 
+		auto result = local_function->Call(
+			isolate->GetCurrentContext(), 
+			v8::Null(isolate), 
+			2, 
+			argv
+		);
 
 		// Check if our function returned anything...
 		if (result.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
 
+		////////////////////////////////////////////////
+
+		// Get our result value.
+		auto result_value = result.ToLocalChecked();
+
+		// Check if our result is a promise.
+		if (result_value->IsPromise())
+		{	
+			return RQ_NOTIFICATION_PENDING;
+		}
+
+		////////////////////////////////////////////////
+
+		// We should reset our pointer back to nullptr, to prevent use-after.
+		http_request_object->SetAlignedPointerInInternalField(0, nullptr);
+		http_response_object->SetAlignedPointerInInternalField(0, nullptr);
+
+		////////////////////////////////////////////////
+
 		// Our returned value...
-		auto returned_value = v8pp::from_v8<int>(isolate, result.ToLocalChecked(), 0);
+		auto request_notification_status = v8pp::from_v8<int>(isolate, result_value, 0);
+
+		////////////////////////////////////////////////
 
 		// Cast our value to a request notification...
-		return REQUEST_NOTIFICATION_STATUS(returned_value);
+		return REQUEST_NOTIFICATION_STATUS(request_notification_status);
 	}
 
 	std::string sock_to_ip(PSOCKADDR address)
@@ -762,7 +954,8 @@ namespace v8_wrapper
 
 			return std::string(ip_address);
 		}
-		else if (address->sa_family == AF_INET6)
+		
+		if (address->sa_family == AF_INET6)
 		{
 			// Setup our ip address variable...
 			char ip_address[INET6_ADDRSTRLEN] = { 0 };
@@ -772,8 +965,8 @@ namespace v8_wrapper
 
 			return std::string(ip_address);
 		}
-		else
-			throw std::exception("invalid family for sock_to_ip");
+		
+		throw std::exception("invalid family for sock_to_ip");
 	}
 
 	bool execute_string(char * str, bool print_result, bool report_exceptions)
@@ -867,7 +1060,7 @@ namespace v8_wrapper
 
 		delete[] chars;
 
-		vs_printf("Loaded %ws successfully...\n", name);
+		vs_printf("Executed %ws script...\n", name);
 		fflush(stdout);
 	}
 
