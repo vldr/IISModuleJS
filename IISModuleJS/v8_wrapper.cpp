@@ -12,8 +12,6 @@ namespace v8_wrapper
 	v8::Persistent<v8::Context> context;
 	v8::Isolate * isolate = nullptr; 
 
-	IHttpContext * p_http_context = nullptr;
-
 	std::wstring script_name;
 	simdb db;
 	
@@ -567,14 +565,6 @@ namespace v8_wrapper
 				HTTP_RESPONSE->DisableKernelCache(reason);
 			});
 
-			module.set("indicateCompletion", [](int reason) {
-				// Check if our http response is set.
-				if (!p_http_context) throw std::exception("invalid p_http_context for indicateCompletion");
-
-				// Disable kernel caching...
-				p_http_context->IndicateCompletion((REQUEST_NOTIFICATION_STATUS)reason);
-			});
-
 			// deleteHeader(headerName: String): bool
 			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is valid.
@@ -688,7 +678,7 @@ namespace v8_wrapper
 					// Check if our result was not successful.
 					if (FAILED(hr))
 					{
-						throw std::exception("failed to write, error code: " + hr);
+						throw std::exception("failed to write");
 					}
 
 					////////////////////////////////////////
@@ -865,8 +855,6 @@ namespace v8_wrapper
 		// Check if our pointers are null...
 		if (!isolate) return RQ_NOTIFICATION_CONTINUE;
 
-		vs_printf("status here.\n");
-
 		// Check if our function is empty...
 		if (function_begin_request.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
 
@@ -884,7 +872,7 @@ namespace v8_wrapper
 		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
 
-		// Update the pointers.
+		// Update the pointers in our objects.
 		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext->GetResponse());
 		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext->GetRequest());
 
@@ -894,11 +882,6 @@ namespace v8_wrapper
 		// Setup local function...
 		auto local_function = function_begin_request.Get(isolate);
 
-		////////////////////////////////////////////////
-
-		// Update our http context pointer.
-		p_http_context = pHttpContext;
-		
 		////////////////////////////////////////////////
 
 		// Attempt to get our registered create move callback and call it...
@@ -920,6 +903,65 @@ namespace v8_wrapper
 		// Check if our result is a promise.
 		if (result_value->IsPromise())
 		{	
+			// Our callback returned from the promise.
+			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& info)
+			{
+				// Cast our data object as a promise value.
+				auto objects = info.Data().As<v8::Array>();
+
+				auto promise = objects->Get(isolate->GetCurrentContext(), 0)
+					.ToLocalChecked()
+					.As<v8::Promise>();
+
+				auto http_context = (IHttpContext*)objects->Get(isolate->GetCurrentContext(), 1)
+					.ToLocalChecked()
+					.As<v8::External>()->Value();
+
+				//////////////////////////////////////////////////////
+
+				// Set our default notification status.
+				int request_notification_status = 0;
+
+				// Check if the promise was fulfilled.
+				if (promise->State() == v8::Promise::kFulfilled)
+					request_notification_status = v8pp::from_v8<int>(
+						isolate, 
+						promise->Result(), 
+						0
+					);
+				// Otherwise, kill the execution and throw an exception.
+				else 
+					v8pp::throw_ex(isolate, "the promise yielded a rejected state");
+					
+				// Regardless of any result,
+				// we need to indicate that the we've completed
+				// our execution to IIS.
+				http_context->IndicateCompletion(
+					REQUEST_NOTIFICATION_STATUS(request_notification_status)
+				);
+			};
+
+			////////////////////////////////////////////////
+
+			auto promise = result_value.As<v8::Promise>();
+			auto external = v8::External::New(isolate, pHttpContext);
+
+			v8::Local<v8::Value> objects[2] = { promise, external };
+
+			auto array = v8::Array::New(isolate, objects, 2);
+
+			// Create our callback function.
+			auto function = v8::Function::New(
+				isolate->GetCurrentContext(),
+				callback,
+				array
+			).ToLocalChecked();
+			
+			// Attach our callback function to our promise to handle both scenarios.
+			promise->Then(isolate->GetCurrentContext(), function, function);
+
+			////////////////////////////////////////////////
+
 			return RQ_NOTIFICATION_PENDING;
 		}
 
