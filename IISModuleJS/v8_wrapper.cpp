@@ -18,7 +18,7 @@ namespace v8_wrapper
 	void start(std::wstring app_pool_name)
 	{ 
 		// Setup our engine thread.
-		std::thread engine_thread([app_pool_name] { 
+		std::thread engine_thread([app_pool_name] {
 			// Setup our db.;
 			db = simdb("test", 1024, 4096);
 			db.flush();
@@ -445,7 +445,7 @@ namespace v8_wrapper
 
 		////////////////////////////////////////
 
-		return v8::Context::New(isolate, NULL, global.obj_);
+		return v8::Context::New(isolate, nullptr, global.obj_);
 	}
 
 	void initialize_objects()
@@ -679,13 +679,13 @@ namespace v8_wrapper
 				do
 				{ 
 					// Create an array of data chunks.
-					HTTP_DATA_CHUNK data_chunk;
+					HTTP_DATA_CHUNK data_chunk = HTTP_DATA_CHUNK();
 					unsigned long cb_sent = 0;
 					
 					// Set the chunk to a chunk in memory.
 					data_chunk.DataChunkType = HttpDataChunkFromMemory;
-					data_chunk.FromMemory.pBuffer = (PVOID)((unsigned char*)buffer + buffer_offset);
-					data_chunk.FromMemory.BufferLength = (USHORT)bytes_to_write;
+					data_chunk.FromMemory.pBuffer = PVOID((unsigned char*)buffer + buffer_offset);
+					data_chunk.FromMemory.BufferLength = USHORT(bytes_to_write);
 
 					// Insert the data chunks into the response.
 					auto hr = HTTP_RESPONSE->WriteEntityChunks(&data_chunk, 1, FALSE, has_more_data, &cb_sent);
@@ -947,7 +947,7 @@ namespace v8_wrapper
 				// our execution to IIS.
 				http_context->IndicateCompletion(
 					REQUEST_NOTIFICATION_STATUS(request_notification_status)
-				);
+				); 
 			};
 
 			////////////////////////////////////////////////
@@ -985,7 +985,7 @@ namespace v8_wrapper
 			char ip_address[INET_ADDRSTRLEN] = { 0 };
 			auto socket = (sockaddr_in*)address;
 
-			InetNtopA(socket->sin_family, &socket->sin_addr, ip_address, sizeof(ip_address));
+			InetNtopA(socket->sin_family, &socket->sin_addr, ip_address, sizeof ip_address);
 
 			return std::string(ip_address);
 		}
@@ -996,7 +996,7 @@ namespace v8_wrapper
 			char ip_address[INET6_ADDRSTRLEN] = { 0 };
 			auto socket = (sockaddr_in6*)address;
 
-			InetNtopA(socket->sin6_family, &socket->sin6_addr, ip_address, sizeof(ip_address));
+			InetNtopA(socket->sin6_family, &socket->sin6_addr, ip_address, sizeof ip_address);
 
 			return std::string(ip_address);
 		}
@@ -1013,7 +1013,12 @@ namespace v8_wrapper
 		v8::Context::Scope context_scope(context.Get(isolate));
 
 		// Enter the execution environment before evaluating any code.
-		v8::Local<v8::String> name(v8::String::NewFromUtf8(isolate, "(shell)", v8::NewStringType::kNormal).ToLocalChecked());
+		v8::Local<v8::String> name(
+			v8::String::NewFromUtf8(
+				isolate, "(shell)", 
+				v8::NewStringType::kNormal
+			).ToLocalChecked()
+		);
 
 		// Setup other related...
 		v8::TryCatch try_catch(isolate);
@@ -1071,7 +1076,7 @@ namespace v8_wrapper
 		v8::Context::Scope context_scope(context.Get(isolate));
 
 		FILE* file = _wfopen(name, L"rb");
-		if (file == NULL) return;
+		if (file == nullptr) return;
 
 		fseek(file, 0, SEEK_END);
 		size_t size = ftell(file);
