@@ -13,7 +13,9 @@
 #include <httplib/httplib.h>
 
 #ifdef _DEBUG
+#include <rpc/server.h>
 #pragma comment(lib, "v8_monolith.64.lib")
+#pragma comment(lib, "rpc.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "winmm.lib")
 #else
@@ -143,7 +145,6 @@ namespace v8_wrapper
 	};
 
 	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext);
-	REQUEST_NOTIFICATION_STATUS debug_remote_code_execution(IHttpContext * pHttpContext);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();

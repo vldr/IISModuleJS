@@ -28,8 +28,8 @@ namespace v8_wrapper
 	void start(std::wstring app_pool_name)
 	{ 
 		// Setup our engine thread.
-		std::thread engine_thread([app_pool_name] {
-			// Setup our db.;
+		std::thread engine_thread([app_pool_name] {	
+			// Setup our db.
 			db = simdb("IISModule", 1024, 4096);
 			db.flush();
 
@@ -133,7 +133,21 @@ namespace v8_wrapper
 	 * and watches for changes every second.
 	 */
 	void load_and_watch()
-	{
+	{ 
+
+#ifdef _DEBUG
+		// Setup our rpc server to handle remote code executions 
+		// that are needed for debugging and tests.
+		rpc::server rpc_server(8080);
+
+		// Bind our execute function to actually execute our scripts.
+		rpc_server.bind("execute", [](std::string script) {
+			return execute_string((char*)script.c_str(), true, true);
+		});
+
+		// Run our rpc server asynchronously.
+		rpc_server.async_run();
+#endif
 
 		//////////////////////////////////////////
 
@@ -1038,51 +1052,6 @@ namespace v8_wrapper
 		}
 		
 		throw std::exception("invalid family for sock_to_ip");
-	}
-
-	/**
-	 * Allows for remote code execution in order 
-	 * for tests to be able to run.
-	 */
-	REQUEST_NOTIFICATION_STATUS debug_remote_code_execution(IHttpContext * pHttpContext)
-	{
-#pragma message( "-------------------------------------------" )
-#pragma message( "WARNING! " )
-#pragma message( "YOU ARE COMPILING IN DEBUG MODE!" )
-#pragma message( "THIS IS UNSAFE AND ALLOWS USERS TO EXECUTE CODE REMOTELY! " )
-#pragma message( "-------------------------------------------" )
-
-		// Get our request.
-		auto request = pHttpContext->GetRequest();
-		auto response = pHttpContext->GetResponse();
-
-
-		// Check if our request is valid.
-		if (!request || !response) return RQ_NOTIFICATION_CONTINUE;
-
-		// Setup our length variable.
-		USHORT length = 0;
-
-		// Attempt to fetch our x-code header 
-		// where the passed code will be executed.
-		auto code_header = request->GetHeader("x-execute-code", &length);
-
-		// Check if our code header is valid.
-		if (!code_header) return RQ_NOTIFICATION_CONTINUE;
-
-		// Reset our engine beforehand.
-		reset_engine();
-
-		// Transfer the value of the code header to a string.
-		auto string = std::string(code_header, length);
-		bool did_execute = execute_string((char*)string.c_str(), true, true);
-
-		// Set the result header.
-		std::string did_execute_string = std::to_string(did_execute);
-		response->SetHeader("x-did-execute", did_execute_string.c_str(), did_execute_string.length(), TRUE);
-
-		// Stop the pipeline here just incase.
-		return RQ_NOTIFICATION_FINISH_REQUEST;
 	}
 
 	/**
