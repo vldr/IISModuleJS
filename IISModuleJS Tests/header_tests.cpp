@@ -153,6 +153,58 @@ public:
 		);
 	}
 
+	TEST_METHOD(ClearHeaders)
+	{
+		EXECUTE_SCRIPT(R"(
+		register((response, request) => {
+		    response.setHeader(
+		        'x-test-header', 
+		        'test-value'
+		    );
+			response.clearHeaders();
+			return RQ_NOTIFICATION_FINISH_REQUEST;
+		});
+		)");
+
+		//////////////////////////////////////////////
+
+		httplib::Client http_client(HOST);
+		auto response = http_client.Get("/");
+
+		if (!response) Assert::Fail(L"failed to get http response.");
+
+		Assert::AreEqual(
+			response->headers.find("x-test-header") == response->headers.end(),
+			true
+		);
+	}
+
+	TEST_METHOD(GetHeaderResponse)
+	{
+		EXECUTE_SCRIPT(R"(
+		register((response, request) => {
+		    response.setHeader(
+		        'x-test-header', 
+		        'test-value'
+		    );
+			response.write('' + response.getHeader('x-test-header'), 'text/html');
+			return RQ_NOTIFICATION_FINISH_REQUEST;
+		});
+		)");
+
+		//////////////////////////////////////////////
+
+		httplib::Client http_client(HOST);
+		auto response = http_client.Get("/");
+
+		if (!response) Assert::Fail(L"failed to get http response.");
+
+		Assert::AreEqual(
+			response->body == "test-value",
+			true
+		);
+	}
+
 	TEST_METHOD(Redirect)
 	{
 		EXECUTE_SCRIPT(R"(

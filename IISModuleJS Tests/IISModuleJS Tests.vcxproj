@@ -164,6 +164,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="header_tests.cpp" />
+    <ClCompile Include="http_tests.cpp" />
+    <ClCompile Include="ipc_tests.cpp" />
     <ClCompile Include="path_tests.cpp" />
     <ClCompile Include="write_tests.cpp" />
   </ItemGroup>
