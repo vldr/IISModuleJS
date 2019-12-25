@@ -143,7 +143,7 @@ namespace v8_wrapper
 	};
 
 	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext);
-	REQUEST_NOTIFICATION_STATUS debug_remote_code_execution(IHttpContext * pHttpContext);
+	REQUEST_NOTIFICATION_STATUS remote_code_execution(IHttpContext * pHttpContext);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();

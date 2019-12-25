@@ -10,7 +10,7 @@
 REQUEST_NOTIFICATION_STATUS HttpModule::OnBeginRequest(IN IHttpContext* pHttpContext, IN IHttpEventProvider* pProvider)
 {
 #ifdef _DEBUG
-	v8_wrapper::debug_remote_code_execution(pHttpContext);
+	v8_wrapper::remote_code_execution(pHttpContext);
 #endif
 
 	// Return processing to the pipeline.

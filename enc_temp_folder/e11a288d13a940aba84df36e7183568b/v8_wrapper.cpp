@@ -5,26 +5,16 @@ namespace v8_wrapper
 {
 	namespace fs = std::experimental::filesystem;
 
-	// All the global objects and functions for v8.
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
 	v8::Global<v8::Function> function_begin_request;
 
-	// A persistent context for v8.
 	v8::Persistent<v8::Context> context;
-
-	// The unique isolate for v8.
 	v8::Isolate * isolate = nullptr; 
 
-	// The name of the default script to be launched. 
 	std::wstring script_name;
-
-	// Simdb database use for ipc.get and ipc.set
 	simdb db;
-
-	/**
-	 * The method that initializes everything necessary.
-	 */
+	
 	void start(std::wstring app_pool_name)
 	{ 
 		// Setup our engine thread.
@@ -64,11 +54,9 @@ namespace v8_wrapper
 		engine_thread.detach();
 	}
 
-	/**
-	 * Resets the engine by creating a new context.
-	 */
 	void reset_engine()
 	{
+		// Setup lockers...
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
 		v8::HandleScope handle_scope(isolate);
@@ -84,10 +72,6 @@ namespace v8_wrapper
 		initialize_objects();
 	}
 
-	/**
-	 * Gets the path to the location of 
-	 * where all the scripts reside.
-	 */
 	std::experimental::filesystem::path get_path(std::wstring script = std::wstring())
 	{
 		//////////////////////////////////////////
@@ -128,10 +112,6 @@ namespace v8_wrapper
 		//////////////////////////////////////////
 	}
 
-	/**
-	 * Loads an initial script file 
-	 * and watches for changes every second.
-	 */
 	void load_and_watch()
 	{
 
@@ -171,10 +151,6 @@ namespace v8_wrapper
 		//////////////////////////////////////////
 	}
 
-	/**
-	 * Creates various global objects and methods 
-	 * and creates a brand new context.
-	 */
 	v8::Local<v8::Context> create_shell_context()
 	{
 		// Setup isolate locker...
@@ -472,10 +448,6 @@ namespace v8_wrapper
 		return v8::Context::New(isolate, nullptr, global.obj_);
 	}
 
-	/**
-	 * Initializes two global objects named http_response and http_request.
-	 * They are the wrappers for IHttpRequest and IHttpResponse.
-	 */
 	void initialize_objects()
 	{
 		v8::Locker locker(isolate);
@@ -893,10 +865,6 @@ namespace v8_wrapper
 		}
 	}
 
-	/**
-	 * Handles the callback for begin request that is registered in JS 
-	 * with "register".
-	 */
 	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext)
 	{
 		// Check if our pointers are null...
@@ -931,7 +899,7 @@ namespace v8_wrapper
 
 		////////////////////////////////////////////////
 
-		// Attempt to get our registered our callback and call it.
+		// Attempt to get our registered create move callback and call it...
 		auto result = local_function->Call(
 			isolate->GetCurrentContext(), 
 			v8::Null(isolate), 
@@ -1007,10 +975,6 @@ namespace v8_wrapper
 		);
 	}
 
-	/**
-	 * Converts a PSOCKADDR to a formatted string,
-	 * works for both IPv4 and IPv6.
-	 */
 	std::string sock_to_ip(PSOCKADDR address)
 	{
 		if (!address) throw std::exception("invalid address for sock_to_ip");
@@ -1040,11 +1004,7 @@ namespace v8_wrapper
 		throw std::exception("invalid family for sock_to_ip");
 	}
 
-	/**
-	 * Allows for remote code execution in order 
-	 * for tests to be able to run.
-	 */
-	REQUEST_NOTIFICATION_STATUS debug_remote_code_execution(IHttpContext * pHttpContext)
+	REQUEST_NOTIFICATION_STATUS remote_code_execution(IHttpContext * pHttpContext)
 	{
 #pragma message( "-------------------------------------------" )
 #pragma message( "WARNING! " )
@@ -1085,9 +1045,6 @@ namespace v8_wrapper
 		return RQ_NOTIFICATION_FINISH_REQUEST;
 	}
 
-	/**
-	 * Executes a string containing JavaScript.
-	 */
 	bool execute_string(char * str, bool print_result, bool report_exceptions)
 	{
 		// Setup context...
@@ -1152,10 +1109,6 @@ namespace v8_wrapper
 		return true;
 	}
 
-	/**
-	 * Executes a file by reading it's contents and 
-	 * passing it to execute_string.
-	 */
 	void execute_file(const wchar_t * name)
 	{
 		v8::Locker locker(isolate);
@@ -1192,9 +1145,6 @@ namespace v8_wrapper
 		fflush(stdout);
 	}
 
-	/**
-	 * Formats and reports an exception.
-	 */
 	void report_exception(v8::TryCatch * try_catch)
 	{
 		// Setup context...
@@ -1241,17 +1191,11 @@ namespace v8_wrapper
 		}
 	}
 
-	/**
-	 * Converts a Utf8Value to a C string.
-	 */
 	const char* c_string(v8::String::Utf8Value& value)
 	{
 		return *value ? *value : "<string conversion failed>";
 	}
 
-	/**
-	 * Uses OutputDebugStringA to print.
-	 */
 	int vs_printf(const char *format, ...)
 	{
 		char str[1024];

@@ -1,15 +1,15 @@
 .".\tests-helpers.ps1"
 
-#######################################
-# 64kb write test 
-#######################################
+##############################################################################
 
-$rand = New-Object System.Random
-1..65355 | foreach { $random_characters = $random_characters + [char]$rand.next(65,90) }
+$big_text = Get-Content -Path ".\big-string.txt"
+$big_array = Get-Content -Path ".\big-array.txt"
+
+##############################################################################
 
 TEST_LOAD_SCRIPT -script @"
 register((response, request) => {
-    response.write('$random_characters', 'text/html');
+    response.write('$big_text', 'text/html');
 
     return RQ_NOTIFICATION_FINISH_REQUEST;
 });
@@ -17,16 +17,14 @@ register((response, request) => {
 
 TEST_EQUAL `
 -value (Invoke-WebRequest -Uri "$url").Content `
--expected_value "$random_characters" `
+-expected_value "$big_text" `
 -name "write 65536 byte long string"
 
-#######################################
-# 131kb write test 
-#######################################
+##############################################################################
 
 TEST_LOAD_SCRIPT -script @"
 register((response, request) => {
-    response.write('$random_characters$random_characters', 'text/html');
+    response.write('$big_text$big_text', 'text/html');
 
     return RQ_NOTIFICATION_FINISH_REQUEST;
 });
@@ -34,16 +32,14 @@ register((response, request) => {
 
 TEST_EQUAL `
 -value (Invoke-WebRequest -Uri "$url").Content `
--expected_value "$random_characters$random_characters" `
+-expected_value "$big_text$big_text" `
 -name "write 131072 byte long string"
 
-#######################################
-# 0 byte write test 
-#######################################
+##############################################################################
 
 TEST_LOAD_SCRIPT -script @"
 register((response, request) => {
-    response.write('$random_characters$random_characters', 'text/html');
+    response.write('', 'text/html');
 
     return RQ_NOTIFICATION_FINISH_REQUEST;
 });
@@ -51,6 +47,82 @@ register((response, request) => {
 
 TEST_EQUAL `
 -value (Invoke-WebRequest -Uri "$url").Content `
--expected_value "$random_characters$random_characters" `
--no_output 1 `
+-expected_value "" `
 -name "write 0 byte long string"
+
+##############################################################################
+
+TEST_LOAD_SCRIPT -script @"
+register((response, request) => {
+    response.write('hi', 'text/html');
+
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+"@
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url").Content `
+-expected_value "hi" `
+-name "write 2 byte long string"
+
+##############################################################################
+
+TEST_LOAD_SCRIPT -script @"
+register((response, request) => {
+    response.write(new Uint8Array([$big_array]), 'text/html');
+
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+"@
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url").Content `
+-expected_value $big_text `
+-name "write 65536 byte long array"
+
+##############################################################################
+
+TEST_LOAD_SCRIPT -script @"
+register((response, request) => {
+    response.write(new Uint8Array([$big_array, $big_array]), 'text/html');
+
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+"@
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url").Content `
+-expected_value $big_text$big_text `
+-name "write 131072 byte long array"
+
+##############################################################################
+
+TEST_LOAD_SCRIPT -script @"
+register((response, request) => {
+    response.write(new Uint8Array([]), 'text/html');
+
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+"@
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url").Content `
+-expected_value "" `
+-name "write 0 byte long array"
+
+##############################################################################
+
+TEST_LOAD_SCRIPT -script @"
+register((response, request) => {
+    response.write(new Uint8Array([0x68, 0x69]), 'text/html');
+
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+"@
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url").Content `
+-expected_value "hi" `
+-name "write 2 byte long array"
+
+

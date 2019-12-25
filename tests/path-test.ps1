@@ -1,8 +1,6 @@
 .".\tests-helpers.ps1"
 
-#######################################
-# getAbsPath test
-#######################################
+####################################
 
 TEST_LOAD_SCRIPT -script @"
 register((response, request) => {
@@ -18,10 +16,24 @@ register((response, request) => {
 });
 "@
 
+#######################################
+# getAbsPath test
+#######################################
+
 TEST_EQUAL `
--value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?123456789" -Headers @{"x-test-value"="getAbsPath"}).Content `
+-value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?this=is&a=query&string" -Headers @{"x-test-value"="getAbsPath"}).Content `
 -expected_value "/this/is/a/absolute/path" `
--name "getAbsPath"
+-name "getAbsPath sample"
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url" -Headers @{"x-test-value"="getAbsPath"}).Content `
+-expected_value "/" `
+-name "getAbsPath empty"
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url/?this=is&a=query&string" -Headers @{"x-test-value"="getAbsPath"}).Content `
+-expected_value "/" `
+-name "getAbsPath query string"
 
 #######################################
 # getMethod test
@@ -52,6 +64,56 @@ TEST_EQUAL `
 #######################################
 
 TEST_EQUAL `
--value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?123456789" -Headers @{"x-test-value"="getFullUrl"} ).Content `
--expected_value "$url`:80/this/is/a/absolute/path?123456789" `
+-value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?this=is&a=query&string" -Headers @{"x-test-value"="getFullUrl"} ).Content `
+-expected_value "$url`:80/this/is/a/absolute/path?this=is&a=query&string" `
 -name "getFullUrl"
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url" -Headers @{"x-test-value"="getFullUrl"} ).Content `
+-expected_value "$url`:80/" `
+-name "getFullUrl empty"
+
+#######################################
+# getQueryString test
+#######################################
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url/?this=is&a=query&string" -Headers @{"x-test-value"="getQueryString"} ).Content `
+-expected_value "?this=is&a=query&string" `
+-name "getQueryString"
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?this=is&a=query&string" -Headers @{"x-test-value"="getQueryString"} ).Content `
+-expected_value "?this=is&a=query&string" `
+-name "getQueryString with abs path"
+
+#######################################
+# getHost test
+#######################################
+
+$ip_from_url = $url.Replace("http://", "")
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?this=is&a=query&string" -Headers @{"x-test-value"="getHost"} ).Content `
+-expected_value "$ip_from_url`:80" `
+-name "getHost"
+
+#######################################
+# getLocalAddress test
+#######################################
+
+$ip_from_url = $url.Replace("http://", "")
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?this=is&a=query&string" -Headers @{"x-test-value"="getLocalAddress"} ).Content `
+-expected_value "$ip_from_url" `
+-name "getLocalAddress"
+
+#######################################
+# getRemoteAddress test
+#######################################
+
+TEST_EQUAL `
+-value (Invoke-WebRequest -Uri "$url/this/is/a/absolute/path?this=is&a=query&string" -Headers @{"x-test-value"="getRemoteAddress"} ).Content `
+-expected_value "$ip_from_url" `
+-name "getRemoteAddress"
