@@ -1,0 +1,16 @@
+# Universal Windows Platform /p:useenv=true /p:PlatformToolset=v141
+trigger:
+- master
+
+pool:
+  vmImage: 'windows-latest'
+  
+steps:
+- task: VSBuild@1
+  inputs:
+    solution: '**\*.sln'
+    vsVersion: '16.0'
+    msbuildArgs: '/p:AdditionalIncludePaths=$(ProjectDir)V8Include'
+    platform: 'x64'
+    configuration: 'Debug'
+    
