@@ -118,7 +118,8 @@
 </Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>iisreset /start</Command>
+      <Command>%systemroot%\system32\inetsrv\appcmd.exe install module /name:IISModuleJS /image:$(OutputPath)$(TargetFileName)
+iisreset /start</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

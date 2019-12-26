@@ -588,7 +588,7 @@ namespace v8_wrapper
 					reset_status_code,
 					include_parameters);
 
-				// Return our result...
+				// Return our result... 
 				return SUCCEEDED(hr);
 			});
 

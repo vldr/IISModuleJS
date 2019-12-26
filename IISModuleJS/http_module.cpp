@@ -9,7 +9,6 @@
  */
 REQUEST_NOTIFICATION_STATUS HttpModule::OnBeginRequest(IN IHttpContext* pHttpContext, IN IHttpEventProvider* pProvider)
 {
-
-	// Return processing to the pipeline.
+	// Return processing to the pipeline. 
 	return v8_wrapper::begin_request(pHttpContext);
 }
