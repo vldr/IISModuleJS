@@ -1,4 +1,6 @@
 #pragma once
+#pragma warning( disable : 4267 )
+#pragma warning( disable : 4244 )
 #include <httplib/httplib.h>
 #include <rpc/client.h>
 #pragma comment(lib, "rpc.lib")

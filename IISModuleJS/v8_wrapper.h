@@ -1,4 +1,6 @@
 #pragma once
+#pragma warning( disable : 4267 )
+#pragma warning( disable : 4244 )
 
 #define _WINSOCKAPI_
 #define NOMINMAX
