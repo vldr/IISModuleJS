@@ -69,6 +69,115 @@ Prints *msg* using OutputDebugString. You can observe the print out using a debu
 print("test message");
 ```
 
+### Request: Object
+
+#### getHost(): String
+Returns the host section of the url for the request.
+
+```javascript
+register((response, request) => 
+{
+    // If the full url is "http://127.0.0.1/this/is/a/absolute/path?this=is&a=query&string"
+    // then this will print out "127.0.0.1:80"
+    print(
+        request.getHost()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getQueryString(): String
+Returns the query string for the request. 
+
+```javascript
+register((response, request) => 
+{
+    // If the full url is "http://127.0.0.1/this/is/a/absolute/path?this=is&a=query&string"
+    // then this will print out "?this=is&a=query&string"
+    print(
+        request.getQueryString()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getFullUrl(): String
+Returns the full url for the request. 
+
+```javascript
+register((response, request) => 
+{
+    // If the full url is "http://127.0.0.1/this/is/a/absolute/path?this=is&a=query&string"
+    // then this will print out "http://127.0.0.1:80/this/is/a/absolute/path?this=is&a=query&string"
+    print(
+        request.getFullUrl()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getAbsPath(): String
+Returns the absolute path for the request. 
+
+```javascript
+register((response, request) => 
+{
+    // If the full url is "http://127.0.0.1/this/is/a/absolute/path?this=is&a=query&string"
+    // then this will print out "/this/is/a/absolute/path"
+    print(
+        request.getAbsPath()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getMethod(): String
+Returns the HTTP method for the current request. Example: GET, POST, etc.
+```javascript
+register((response, request) => 
+{
+    // Prints out the HTTP method.
+    print(
+        request.getMethod()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getLocalAddress(): String
+Returns the address of the local interface for the current request. This will return either a IPv4 or IPv6 address.
+```javascript
+register((response, request) => 
+{
+    // Prints out the local ip address.
+    print(
+        request.getLocalAddress()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getRemoteAddress(): String
+Returns the address of the local interface for the current request. This will return either a IPv4 or IPv6 address.
+This method can be used to get the connecting client's IP address.
+```javascript
+register((response, request) => 
+{
+    // Prints out the remote ip address.
+    print(
+        request.getRemoteAddress()
+    );
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
 ### Response: Object
 
 #### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): void
