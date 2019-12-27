@@ -177,6 +177,25 @@ register((response, request) =>
 });
 ```
 
+#### getHeader(headerName: String): String || null
+Returns the value of a specified HTTP header. 
+If the header doesn't exist this function will return *null* so make sure to check for it.
+
+```javascript
+register((response, request) => 
+{
+    // Gets the value of the User-Agent header.
+    const userAgent = request.getHeader('User-Agent');
+    
+    // Check if our header exists.
+    if (userAgent)
+        // Prints out for example "Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1"
+        print(userAgent);
+   
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
 ### Response: Object
 
 #### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): void
