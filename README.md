@@ -1,6 +1,5 @@
 <img src="https://i.imgur.com/JpPLWOC.png" />
-A middleware for IIS that allows you to harness the power and convenience of JavaScript for each request. 
-Only supports the begin request callback for now, make an issue if you want me to implement it. 
+A middleware for IIS (Internet Information Services) that allows you to harness the power and convenience of JavaScript for each request.
 
 # 
 
@@ -8,9 +7,16 @@ Only supports the begin request callback for now, make an issue if you want me t
 * [v8](https://github.com/v8/v8)
 * [rpclib](https://github.com/rpclib/rpclib)
 
-## Installation
-1. Download the precompiled dynamic link library in the releases page.
-2. Follow the instructions given [here.](https://docs.microsoft.com/en-us/iis/develop/runtime-extensibility/develop-a-native-cc-module-for-iis#deploying-a-native-module)
+## Getting Started
+### Installation
+1. Download the precompiled dynamic-link library in the releases page.
+2. Follow the instructions given [here](https://docs.microsoft.com/en-us/iis/develop/runtime-extensibility/develop-a-native-cc-module-for-iis#deploying-a-native-module) to install the dynamic-link library in IIS.
+### Running Scripts
+All scripts are executed from the `%PUBLIC%` directory. The module watches each script for changes and dynamically reloads a script if a change was found. 
+
+Scripts be should named with their corresponding [application pool name](https://blogs.msdn.microsoft.com/rohithrajan/2017/10/08/quick-reference-iis-application-pool/). For example, the site `vldr.org` would likely have the application pool name `vldr_org` thus the script should be named `vldr_org.js`
+
+You can load as many subsequent scripts as you want using the *load* function.
 
 ## API
 #### REQUEST_NOTIFICATION_STATUS: enum
