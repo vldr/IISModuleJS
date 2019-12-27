@@ -4,9 +4,9 @@ A middleware for IIS (Internet Information Services) that allows you to harness 
 # 
 
 # Dependencies
-* [v8](https://github.com/v8/v8)
-* [rpclib](https://github.com/rpclib/rpclib)
-* [openssl](https://github.com/openssl/openssl)
+* [v8](https://github.com/v8/v8) (included precompiled library file in releases)
+* [rpclib](https://github.com/rpclib/rpclib) (included precompiled library file in releases)
+* [openssl](https://github.com/openssl/openssl) (included precompiled library file in releases)
 * [httplib](https://github.com/yhirose/cpp-httplib) (included)
 * [v8pp](https://github.com/pmed/v8pp) (included)
 * [simdb](https://github.com/LiveAsynchronousVisualizedArchitecture/simdb) (included)
