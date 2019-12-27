@@ -20,7 +20,7 @@ All scripts are executed from the `%PUBLIC%` directory. The module watches each 
 
 Scripts be should named with their corresponding [application pool name](https://blogs.msdn.microsoft.com/rohithrajan/2017/10/08/quick-reference-iis-application-pool/). For example, the site `vldr.org` would likely have the application pool name `vldr_org` thus the script should be named `vldr_org.js`
 
-You can load as many subsequent scripts as you want using the [load](https://github.com/vldr/IISModuleJS#loadfilename-string--void) function.
+You can load as many subsequent scripts as you want using the [load](#loadfilename-string--void) function.
 
 # API
 #### REQUEST_NOTIFICATION_STATUS: enum
@@ -70,6 +70,45 @@ print("test message");
 ```
 
 ### Response
+
+#### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): bool
+The **body** parameter gets written to the response. 
+The **mimeType** parameter sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) header with the given value.
+The **contentEncoding** parameter sets the [Content-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) header so you can provide compressed data through a response.
+
+The example below demonstrates various ways of writing *"hi"* as a response:
+```javascript
+register((response, request) => {
+    // Writes a response with a String.
+    response.write("hi", "text/html");
+    
+    // Writes a response with a Uint8Array.
+    response.write(new Uint8Array([0x68, 0x69]), "text/html");
+    
+    // Writes a response with a Uint8Array and using the deflate content encoding.
+    response.write(
+        new Uint8Array([0x78, 0x9c, 0xcb, 0xc8, 0x04, 0x00, 0x01, 0x3b, 0x00, 0xd2]), 
+        "text/html", 
+        "deflate"
+    );
+    
+    // You have to use RQ_NOTIFICATION_FINISH_REQUEST because 
+    // we want the request to finish here, and not 
+    // continue down the IIS pipeline.
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+```
+
+#### getHeader(headerName: String): String || null
+Returns the value of a specified HTTP header.
+
+```javascript
+register((response, request) => {
+    const serverHeaderValue = request.getHeader('Server');
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
 
 #### clear(): void
 Clears the response entity. 
@@ -203,17 +242,6 @@ Deletes an HTTP header from the request.
 register((response, request) => {
     response.deleteHeader('Server');
 
-    return RQ_NOTIFICATION_CONTINUE;
-});
-```
-
-#### getHeader(headerName: String): String || null
-Returns the value of a specified HTTP header.
-
-```javascript
-register((response, request) => {
-    const serverHeaderValue = request.getHeader('Server');
-    
     return RQ_NOTIFICATION_CONTINUE;
 });
 ```
