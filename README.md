@@ -69,7 +69,7 @@ Prints *msg* using OutputDebugString. You can observe the print out using a debu
 print("test message");
 ```
 
-### Response
+### Response: Object
 
 #### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): void
 The **body** parameter gets written to the response. 
@@ -102,20 +102,47 @@ register((response, request) =>
 });
 ```
 
-#### getHeader(headerName: String): String || null
-Returns the value of a specified HTTP header.
+#### setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): bool
+Sets or appends the value of a specified HTTP response header. 
+
+The **headerName** parameter defines the name of the header, example: "Content-Type."
+The **headerValue** parameter sets the value of the header, example: "text/html."
+The **shouldReplace** paremeter determines whether to replace a preexisting headers value or to append to it. 
 
 ```javascript
 register((response, request) => 
 {
-    const header = request.getHeader('Server');
+    // This will replace the 'Server' header with the value 'custom server value'
+    response.setHeader('Server', 'custom server value');
+
+    // This will append 'custom server value 2' to the 'Server' header.
+    response.setHeader('Server', 'custom server value 2', false);
     
     return RQ_NOTIFICATION_CONTINUE;
 });
 ```
 
+#### getHeader(headerName: String): String || null
+Returns the value of a specified HTTP header. 
+If the header doesn't exist this function will return *null* so make sure to check for it.
+
+```javascript
+register((response, request) => 
+{
+    // Gets the value of the server header.
+    const serverHeaderValue = response.getHeader('Server');
+    
+    // Check if our header exists, in this case it will.
+    if (serverHeaderValue)
+        // Prints out "Microsoft-IIS/10.0" (depending on your server version)
+        print(serverHeaderValue);
+   
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
 #### clear(): void
-Clears the response entity. 
+Clears the response body. 
 ```javascript
 register((response, request) => 
 {
@@ -137,7 +164,7 @@ register((response, request) =>
 ```
 
 #### closeConnection(): void
-Closes he connection and sends a reset packet to the client.
+Closes the connection and sends a reset packet to the client.
 ```javascript
 register((response, request) => 
 {
