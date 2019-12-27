@@ -20,7 +20,7 @@ All scripts are executed from the `%PUBLIC%` directory. The module watches each 
 
 Scripts be should named with their corresponding [application pool name](https://blogs.msdn.microsoft.com/rohithrajan/2017/10/08/quick-reference-iis-application-pool/). For example, the site `vldr.org` would likely have the application pool name `vldr_org` thus the script should be named `vldr_org.js`
 
-You can load as many subsequent scripts as you want using the *load* function.
+You can load as many subsequent scripts as you want using the [load](https://github.com/vldr/IISModuleJS#loadfilename-string--void) function.
 
 # API
 #### REQUEST_NOTIFICATION_STATUS: enum
@@ -68,3 +68,85 @@ Prints *msg* using OutputDebugString. You can observe the print out using a debu
 ```javascript
 print("test message");
 ```
+
+### Response
+
+#### clear(): void
+Clears the response entity. 
+```javascript
+register((response, request) => 
+{
+    response.clear();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### clearHeaders(): void
+Clears the response headers and sets headers to default values.
+```javascript
+register((response, request) => 
+{
+    response.clearHeaders();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### closeConnection(): void
+Closes he connection and sends a reset packet to the client.
+```javascript
+register((response, request) => 
+{
+    response.closeConnection();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### setNeedDisconnect(): void
+Resets the socket after the response is complete.
+```javascript
+register((response, request) => 
+{
+    response.setNeedDisconnect();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getKernelCacheEnabled(): bool
+Determines whether the kernel cache is enabled for the current response.
+```javascript
+register((response, request) => 
+{
+    response.getKernelCacheEnabled();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### resetConnection(): void
+Resets the socket connection immediately.
+```javascript
+register((response, request) => 
+{
+    response.resetConnection();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### disableBuffering(): void
+Disables response buffering for the current request.
+```javascript
+register((response, request) => 
+{
+    response.disableBuffering();
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+
+
