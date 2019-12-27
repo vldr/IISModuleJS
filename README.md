@@ -68,6 +68,63 @@ Prints **msg** using OutputDebugString. You can observe the print out using a de
 print("test message");
 ```
 
+### IPC: Interface
+The interprocess communication interface provides a key-value store where you can share JavaScript data across different processes/workers.
+
+#### ipc.set(key: String, value: any): void
+Sets a **key** with a given **value**.
+
+```javascript
+register((response, request) => 
+{
+    // Get our client's ip address.
+    const ip = request.getRemoteAddress();
+    
+    // An example object.
+    const object = { 
+        number: 3.14,
+        text: "sample text",
+        array: [ 3.14, "sample text" ]
+    };
+    
+    // Set our key-value.
+    ipc.set(
+        ip, 
+        object
+    ); 
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### ipc.get(key: String): any || null
+Returns a value with the corresponding **key**. 
+This function will return *null* if the key does not exist, make sure to check for it.
+
+```javascript
+register((response, request) => 
+{
+    // Get our client's ip address.
+    const ip = request.getRemoteAddress();
+    
+    // Get our value.
+    const value = ipc.get(ip);
+    
+    // Check if our value exists.
+    if (value)
+    {
+        // Will print out our value.
+        print(
+            JSON.stringify(
+                value
+            )
+        );
+    }
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
 ### Request: Object
 
 #### getHost(): String
