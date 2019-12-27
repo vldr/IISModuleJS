@@ -148,5 +148,74 @@ register((response, request) =>
 });
 ```
 
+#### getStatus(): Number
+Retrieves the HTTP status for the response.
+
+```javascript
+register((response, request) => 
+{
+    const status = response.getStatus();
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### redirect(url: String, resetStatusCode: bool, includeParameters: bool): bool
+Redirects the client to a specified URL.
+
+```javascript
+register((response, request) => {
+    response.redirect("/location", true /* resetStatusCode */, true /* includeParameters */);
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### setErrorDescription(decription: String, shouldHtmlEncode: bool): bool
+Specifies the custom error description.
+
+```javascript
+register((response, request) => {
+    response.setErrorDescription("error <b>description</b>", true /* shouldHtmlEncode */);
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### disableKernelCache(reason: Number): void
+Disables the kernel cache for this response.
+
+```javascript
+register((response, request) => {
+    const HANDLER_HTTPSYS_UNFRIENDLY = 9;
+    
+    response.setErrorDescription(HANDLER_HTTPSYS_UNFRIENDLY);
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+
+#### deleteHeader(headerName: String): bool
+Deletes an HTTP header from the request.
+
+```javascript
+register((response, request) => {
+    response.deleteHeader('Server');
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getHeader(headerName: String): String || null
+Returns the value of a specified HTTP header.
+
+```javascript
+register((response, request) => {
+    const serverHeaderValue = request.getHeader('Server');
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
 
 
