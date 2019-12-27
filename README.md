@@ -78,7 +78,8 @@ The **contentEncoding** parameter sets the [Content-Encoding](https://developer.
 
 The example below demonstrates various ways of writing *"hi"* as a response:
 ```javascript
-register((response, request) => {
+register((response, request) => 
+{
     // Writes a response with a String.
     response.write("hi", "text/html");
     
@@ -105,7 +106,8 @@ register((response, request) => {
 Returns the value of a specified HTTP header.
 
 ```javascript
-register((response, request) => {
+register((response, request) => 
+{
     const header = request.getHeader('Server');
     
     return RQ_NOTIFICATION_CONTINUE;
