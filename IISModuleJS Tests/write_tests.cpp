@@ -108,4 +108,28 @@ public:
 			);
 		}
 	}
+
+	TEST_METHOD(WriteContentEncoding)
+	{
+		std::string script = R"(
+			register((response, request) => {
+			    response.write(new Uint8Array([]), 'text/html', 'deflate');
+
+			    return RQ_NOTIFICATION_FINISH_REQUEST;
+			});
+			)";
+
+		EXECUTE_SCRIPT(std::move(script));
+
+		httplib::Client http_client(HOST);
+		auto response = http_client.Get("/");
+
+		if (!response) Assert::Fail(L"failed to get http response.");
+
+		Assert::AreEqual(
+			response->headers.find("content-encoding") != response->headers.end()
+			&& response->headers.find("content-encoding")->second == "deflate",
+			true
+		);
+	}
 };

@@ -122,7 +122,7 @@ namespace v8_wrapper
 
 		/////////////////////////////////////////
 		
-		// Return path.
+		// Return path. 
 		return path; 
 
 		//////////////////////////////////////////
@@ -383,7 +383,10 @@ namespace v8_wrapper
 			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
 
 			// Write our value.
-			auto result = serializer.WriteValue(args.GetIsolate()->GetCurrentContext(), args[1]).FromMaybe(false);
+			auto result = serializer.WriteValue(
+				args.GetIsolate()->GetCurrentContext(),
+				args[1]
+			).FromMaybe(false);
 
 			// Check if we were able to successfully write our value to the serializer.
 			if (result)
@@ -664,7 +667,7 @@ namespace v8_wrapper
 				RETURN_NULL
 			});
 
-			// write(body: String || Uint8Array, mimetype: String): bool
+			// write(body: String || Uint8Array, mimetype: String, contentEncoding: String {optional}): bool
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
@@ -710,6 +713,21 @@ namespace v8_wrapper
 
 				// Clear and set our header...
 				HTTP_RESPONSE->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
+
+				////////////////////////////////////////////////
+
+				// Check if content encoding parameter was provided.
+				if (args.Length() >= 3) 
+				{
+					// Get our mimetype.
+					v8::String::Utf8Value content_encoding(isolate, args[2]);
+
+					// Check the length of the mime type.
+					if (!content_encoding.length()) throw std::exception("third argument is invalid for write");
+
+					// Clear and set our header...
+					HTTP_RESPONSE->SetHeader(HttpHeaderContentEncoding, *content_encoding, content_encoding.length(), TRUE);
+				}
 
 				////////////////////////////////////////////////
 
