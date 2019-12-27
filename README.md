@@ -44,8 +44,7 @@ enum REQUEST_NOTIFICATION_STATUS {
 #### register(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
 Registers a given function as a callback which will be called for every request.
 
-Your callback function will be provided a Request object, and a Response object for the given request.
-You can only register one callback.
+Your callback function will be provided a [Response](#response-object) object, and a [Request](#request-object) object respectively. The callback function can also be an asynchronous function but keep in mind that this will yield far **worse** performance than using a synchronous function.
 
 ```javascript
 function callback(response, request) 
