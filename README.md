@@ -56,14 +56,14 @@ register(callback);
 ```
 
 #### load(fileName: String, ...): void
-Loads a script using *fileName* as the name of the JavaScript file.
+Loads a script using **fileName** as the name of the JavaScript file, the name should include the extension.
 
 ```javascript
 load("test.js");
 ```
 
 #### print(msg: String, ...): void
-Prints *msg* using OutputDebugString. You can observe the print out using a debugger or [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
+Prints **msg** using OutputDebugString. You can observe the print out using a debugger or [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
 ```javascript
 print("test message");
 ```
