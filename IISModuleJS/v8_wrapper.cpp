@@ -361,13 +361,13 @@ namespace v8_wrapper
 		// ipc Property
 		v8pp::module ipc_module(isolate);
 
-		// ipc.set(key: String, value: Object): bool
+		// ipc.set(key: String, value: any): void
 		ipc_module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			// Check if atleast one argument was provided.
-			if (args.Length() < 2) throw std::exception("invalid function signature for ipc.put");
+			if (args.Length() < 2) throw std::exception("invalid function signature for ipc.set");
 
 			// Check if our first parameter is a string.
-			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.put");
+			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.set");
 
 			/////////////////////////////////////////////
 
@@ -389,22 +389,19 @@ namespace v8_wrapper
 			).FromMaybe(false);
 
 			// Check if we were able to successfully write our value to the serializer.
-			if (result)
-			{
-				// Release the buffer.
-				std::pair<uint8_t*, size_t> buffer = serializer.Release();
+			if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
 
-				// Place the value in the key-value store.
-				result = db.put(key.data(), key.length(), buffer.first, buffer.second);
+			// Release the buffer.
+			std::pair<uint8_t*, size_t> buffer = serializer.Release();
 
-				// Free the buffer after we've placed it into our key-value store.
-				serializer_delegate.FreeBufferMemory(buffer.first);
-			}
+			// Place the value in the key-value store.
+			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
 
-			RETURN_THIS(result)
+			// Free the buffer after we've placed it into our key-value store.
+			serializer_delegate.FreeBufferMemory(buffer.first);
 		});
 
-		// ipc.get(key: String): Object || null
+		// ipc.get(key: String): any || null
 		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			// Need this to return our custom object.
 			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate());
@@ -432,7 +429,7 @@ namespace v8_wrapper
 			/////////////////////////////////////////////
 
 			// Allocate our buffer...
-			auto buffer = new uint8_t[len];
+			auto buffer = std::make_unique<uint8_t[]>(len);
 
 			if (!buffer)
 			{
@@ -440,11 +437,14 @@ namespace v8_wrapper
 			}
 
 			// Attempt to get our key.
-			db.get(
+			auto result = db.get(
 				key.c_str(),
-				buffer,
+				buffer.get(),
 				len
 			);
+
+			// Check if our result was successful.
+			if (!result) RETURN_NULL
 
 			/////////////////////////////////////////////
 
@@ -454,16 +454,13 @@ namespace v8_wrapper
 			// Setup our value deserializer.
 			v8::ValueDeserializer deserializer(
 				args.GetIsolate(), 
-				buffer, 
+				buffer.get(), 
 				len, 
 				&deserializer_delegate
 			);
 
 			// Attempt to read the value from the deserializer.
 			auto value = deserializer.ReadValue(args.GetIsolate()->GetCurrentContext());
-
-			// Delete our buffer.
-			delete[] buffer;
 
 			// Check if our value isn't empty, throw an exception otherwise.
 			if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
@@ -666,8 +663,8 @@ namespace v8_wrapper
 				// Return null otherwise.
 				RETURN_NULL
 			});
-
-			// write(body: String || Uint8Array, mimetype: String, contentEncoding: String {optional}): bool
+	
+			// write(body: String || Uint8Array, mimetype: String, contentEncoding: String {optional}): void
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
@@ -765,7 +762,7 @@ namespace v8_wrapper
 				} while (has_more_data);
 			});
 
-			// setHeader(headerName: String, headerValue: String, shouldReplace: bool): bool
+			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): bool
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setHeader");
@@ -891,7 +888,7 @@ namespace v8_wrapper
 				)
 			});
 
-			// setHeader(headerName: String): String || null
+			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getHeader");
