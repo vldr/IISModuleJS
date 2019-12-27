@@ -26,8 +26,8 @@ You can load as many subsequent scripts as you want using the [load](#loadfilena
 #### REQUEST_NOTIFICATION_STATUS: enum
 The members of the REQUEST_NOTIFICATION_STATUS enumeration are used as return values from request-level notifications, and the members help to control process flow within the integrated request-processing pipeline.[⁺](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/request-notification-status-enumeration#remarks)
 
-* Use *RQ_NOTIFICATION_CONTINUE* if you want the request continue to other modules and rest of the pipeline.
-* Use *RQ_NOTIFICATION_FINISH_REQUEST* if you want the request to be handled by you.
+* Use *RQ_NOTIFICATION_CONTINUE* if you want the request continue to other modules and the rest of the pipeline.
+* Use *RQ_NOTIFICATION_FINISH_REQUEST* if you want the request to be handled only by yourself.
 ```javascript
 enum REQUEST_NOTIFICATION_STATUS {
     // continue processing for notification
@@ -71,10 +71,10 @@ print("test message");
 
 ### Response
 
-#### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): bool
+#### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): void
 The **body** parameter gets written to the response. 
 The **mimeType** parameter sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) header with the given value.
-The **contentEncoding** parameter sets the [Content-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) header so you can provide compressed data through a response.
+The **contentEncoding** parameter sets the [Content-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) header so you can provide compressed data through a response. 
 
 The example below demonstrates various ways of writing *"hi"* as a response:
 ```javascript
@@ -94,7 +94,9 @@ register((response, request) => {
     
     // You have to use RQ_NOTIFICATION_FINISH_REQUEST because 
     // we want the request to finish here, and not 
-    // continue down the IIS pipeline.
+    // continue down the IIS pipeline; otherwise our written
+    // response will be overwritten by other modules like the static file
+    // module.
     return RQ_NOTIFICATION_FINISH_REQUEST;
 });
 ```
