@@ -59,13 +59,21 @@ register(callback);
 Loads a script using **fileName** as the name of the JavaScript file, the name should include the extension.
 
 ```javascript
-load("test.js");
+// Loads a single script.
+load("script.js");
+
+// Load multiple scripts.
+load("script.js", "script2.js");
 ```
 
 #### print(msg: String, ...): void
 Prints **msg** using OutputDebugString. You can observe the print out using a debugger or [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
 ```javascript
+// Prints "test message."
 print("test message");
+
+// Prints "test message and then some."
+print("test message", "and then some");
 ```
 
 ### IPC: Interface
@@ -127,18 +135,18 @@ register((response, request) =>
 
 ### HTTP: Interface
 
-###### http.fetch(hostname: String, path: String, isSSL: bool, method: String {optional}, params: Object<String, String> {optional}): Promise<{ body: String, status: Number }, String>
+##### http.fetch(hostname: String, path: String, isSSL: bool, method: String {optional}, params: Object<String, String> {optional}): Promise<{ body: String, status: Number }, String>
 This function only supports POST and GET methods and should **not** be mistaken for the [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) found in the standard web api.
 
 The **hostname** parameter specifies the domain name of the server, and (optionally) the TCP port number on which the server is listening on.[⁺](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host)
 
 The **path** parameter specifies the path part of the HTTP request. 
 
-The **method** parameter specifies the method part of the HTTP request, for example, GET, POST, etc.
+The **method** parameter specifies the method part of the HTTP request, only, GET and POST.
 
 The **params** parameter should be an Object (not an Array) which will represent the collection of key-value POST parameters (imagine an HTML form) for the HTTP POST request.
 
-The example below requires some familiarity with [Promises](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises).
+The example below requires some familiarity with [Promises](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises). This example strictly demonstrates how an async callback can be used, but you can mix async and non-async functions depending on your needs.
 ```javascript
 register(
     // Notice how we're using an asynchronous callback,
@@ -147,12 +155,12 @@ register(
     async (response, request) => 
     {
         // Attempts to fetch the latest comic from xkcd, 
-        // notice how our isSsl is set to true since the api endpoint
-        // is https.
+        // notice how our isSSL is set to true since the api endpoint
+        // is HTTPS.
         return await http.fetch("xkcd.com", "/info.0.json", true)
             .then((reply) => {
                 // Write our response using the reply body.
-                response.write(reply.body, "application/json", false);
+                response.write(reply.body, "application/json");
                 
                 // Finish our request since we want our response to be written.
                 return RQ_NOTIFICATION_FINISH_REQUEST;
