@@ -157,22 +157,18 @@ register(
         // Attempts to fetch the latest comic from xkcd, 
         // notice how our isSSL is set to true since the api endpoint
         // is HTTPS.
-        return await http.fetch("xkcd.com", "/info.0.json", true)
+        await http.fetch("xkcd.com", "/info.0.json", true)
             .then((reply) => {
                 // Write our response using the reply body.
                 response.write(reply.body, "application/json");
-                
-                // Finish our request since we want our response to be written.
-                return RQ_NOTIFICATION_FINISH_REQUEST;
             })
             .catch((error) => {
-                // Print out our error.
-                print(error);
-                
-                // Let the request continue since 
-                // we have nothing to display.
-                return RQ_NOTIFICATION_CONTINUE;
+                // Write our error as the response.
+                response.write("An error occurred while fetching.", "text/html");
             });
+    
+        // Finish our request since we want our response to be written.
+        return RQ_NOTIFICATION_FINISH_REQUEST
     }
 );
 ```
