@@ -138,7 +138,7 @@ register((response, request) =>
 ##### http.fetch(hostname: String, path: String, isSSL: bool, method: String {optional}, params: Object<String, String> {optional}): Promise<{ body: String, status: Number }, String>
 This function only supports POST and GET methods and should **not** be mistaken for the [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) found in the standard web api.
 
-The **hostname** parameter specifies the domain name of the server, and (optionally) the TCP port number on which the server is listening on.[⁺](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host)
+The **hostname** parameter specifies the domain name of the server. 
 
 The **path** parameter specifies the path part of the HTTP request. 
 
