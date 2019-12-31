@@ -183,19 +183,36 @@ Returns the HTTP request body as a String. The **rewrite** parameter determines 
 ```javascript
 register((response, request) => 
 {
-    // This reads the request body.
-    const body = request.read(); 
+    // Reads the request body with rewrite set to true.
+    let body = request.read(true); 
     
     // Prints out the body.
     print(
         body
     );
+    
+    ////////////////////////////////////
+    
+    // Reads the request body with rewrite set to false (default).
+    body = request.read(); 
+    
+    // Prints out the body.
+    print(
+        body
+    );
+    
+    ////////////////////////////////////
+    
+    // Reads the request body once again but since we didn't rewrite the 
+    // request body back into the pipeline our result will be null.
+    body = request.read(); 
+    
+    // Prints out 'null'.
+    print(
+        `${body}`
+    );
 
-    // You have to use RQ_NOTIFICATION_FINISH_REQUEST because 
-    // once you read the request data then this module takes the responsibility
-    // of handling the request entirely, otherwise modules in 
-    // the pipeline wouldn't be able to read any request data since WE 
-    // read it already.
+    // End the request here. 
     return RQ_NOTIFICATION_FINISH_REQUEST;
 });
 ```
