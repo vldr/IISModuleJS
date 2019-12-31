@@ -175,10 +175,10 @@ register(
 
 ### Request: Object
 
-#### read(): String || null
-Returns the HTTP request body as a String. 
+#### read(rewrite: bool {optional}): String || null
+Returns the HTTP request body as a String. The **rewrite** parameter determines whether to rewrite all the data back into the pipeline; set this to *true* if you expect to let the request continue to PHP or any other module which will use the request data. 
 
-**Note:** Once you read the request body other modules in the pipeline won't be able to read the data you just read. 
+**Note:** Setting rewrite to *true* will yield far worse performance.
 
 ```javascript
 register((response, request) => 
@@ -192,7 +192,7 @@ register((response, request) =>
     );
 
     // You have to use RQ_NOTIFICATION_FINISH_REQUEST because 
-    // once you read the request data then this module takes the responsiblity
+    // once you read the request data then this module takes the responsibility
     // of handling the request entirely, otherwise modules in 
     // the pipeline wouldn't be able to read any request data since WE 
     // read it already.
