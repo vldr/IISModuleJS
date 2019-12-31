@@ -15,7 +15,7 @@ public:
 				text: "sample text",
 				array: [ 3.14, "sample text" ]
 			});
-
+ 
 			response.write(
 				JSON.stringify( 
 					ipc.get("test")

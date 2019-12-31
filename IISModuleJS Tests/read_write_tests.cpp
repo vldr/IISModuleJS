@@ -3,7 +3,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-TEST_CLASS(WriteTests)
+TEST_CLASS(ReadWriteTests)
 {
 public:
 	TEST_METHOD(WriteString)
@@ -131,5 +131,54 @@ public:
 			&& response->headers.find("content-encoding")->second == "deflate",
 			true
 		);
+	}
+
+	 
+	TEST_METHOD(Read)
+	{
+		EXECUTE_SCRIPT(R"(
+		register((response, request) => {
+			response.write(
+				request.read(),
+				"text/html"
+			);
+
+			return RQ_NOTIFICATION_FINISH_REQUEST;
+		});
+		)");
+		
+		auto random_string = [](size_t length) -> std::string
+		{
+			srand(time(nullptr));
+			auto randchar = []() -> char
+			{
+				const char charset[] =
+					"0123456789"
+					"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+					"abcdefghijklmnopqrstuvwxyz";
+				const size_t max_index = (sizeof(charset) - 1);
+				return charset[rand() % max_index];
+			};
+			std::string str(length, 0);
+			std::generate_n(str.begin(), length, randchar);
+			return str;
+		};
+
+		size_t test_sizes[] = { 32768, 65536, 131072 };
+
+		for (int i = 0; i < std::size(test_sizes); i++)
+		{
+			auto random_string_value = random_string(test_sizes[i]);
+
+			httplib::Client http_client(HOST);
+			auto response = http_client.Post("/", random_string_value, "");
+
+			if (!response) Assert::Fail(L"failed to get http response.");
+
+			Assert::AreEqual(
+				response->body == random_string_value,
+				true
+			);
+		}
 	}
 };

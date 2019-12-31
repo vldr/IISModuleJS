@@ -245,7 +245,7 @@ namespace v8_wrapper
 		v8pp::module http_module(isolate);	
 
 		// http.fetch(
-		//	   hostname: String
+		//	   hostname: String,
 		//	   path: String, 
 		//	   isSSL: bool,
 		//	   method: String {optional, GET}, 
@@ -549,13 +549,6 @@ namespace v8_wrapper
 					
 				HTTP_RESPONSE->ResetConnection();
 			});
-
-			// disableBuffering(): void
-			module.set("disableBuffering", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableBuffering");
-					
-				HTTP_RESPONSE->DisableBuffering();
-			});
 				
 			// getStatus(): Number
 			module.set("getStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -805,8 +798,70 @@ namespace v8_wrapper
 			v8pp::module module(isolate);
 
 			// Setup our functions
+			 
+			// read(): String || null
+			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for read");
 
-			// Gets the method
+				////////////////////////////////
+
+				// Return 'null' if there isn't any bytes to read.
+				if (HTTP_REQUEST->GetRemainingEntityBytes() == 0) RETURN_NULL
+
+				////////////////////////////////
+
+				std::vector<char> bytes;
+				bytes.reserve(4096);
+
+				// Since we cannot read the entire entity body in whole
+				// we will receive data in chunks of 4096 bytes.
+				// Thus we will need to use GetRemainingEntityBytes
+				// to check how many bytes are left for us to insert into
+				// 'bytes'.
+				auto remaining_bytes = HTTP_REQUEST->GetRemainingEntityBytes();
+
+				////////////////////////////////
+
+				// Loop until the remaining bytes is zero.
+				while (remaining_bytes != 0)
+				{
+					uint8_t buffer[4096];
+					DWORD read_bytes = 0;
+
+					////////////////////////////////
+
+					// Attempt to read the entity body synchronously.
+					auto hr = HTTP_REQUEST->ReadEntityBody(buffer, sizeof buffer, FALSE, &read_bytes);
+
+					////////////////////////////////
+
+					// Check if we read any bytes and that
+					// our reading operation didn't fail.
+					if (!read_bytes || FAILED(hr)) throw std::exception("failed to read entity body");
+
+					////////////////////////////////
+					
+					bytes.insert(bytes.end(), buffer, buffer + read_bytes);
+
+					////////////////////////////////
+
+					// Update the reamining bytes.
+					remaining_bytes = HTTP_REQUEST->GetRemainingEntityBytes();
+				}
+				
+				////////////////////////////////
+
+				// Convert byte array to v8::String
+				auto string_object = v8pp::to_v8(isolate, bytes.data(), bytes.size());
+
+				///////////////////////////////
+
+				// Set the return value.
+				args.GetReturnValue().Set(
+					string_object
+				);
+			});
+
 			// getMethod(): String
 			module.set("getMethod", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");

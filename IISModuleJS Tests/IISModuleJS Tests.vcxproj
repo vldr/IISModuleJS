@@ -171,7 +171,7 @@
     <ClCompile Include="http_tests.cpp" />
     <ClCompile Include="ipc_tests.cpp" />
     <ClCompile Include="path_tests.cpp" />
-    <ClCompile Include="write_tests.cpp" />
+    <ClCompile Include="read_write_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="helpers.h" />
