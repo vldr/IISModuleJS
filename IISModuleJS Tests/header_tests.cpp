@@ -123,6 +123,92 @@ public:
 		);
 	}
 
+	TEST_METHOD(SetHeaderRequest)
+	{
+		EXECUTE_SCRIPT(R"(
+		register((response, request) => {
+		    response.setHeader(
+				"x-before-set", 
+				request.getHeader('test-header')
+			);
+
+			request.setHeader('test-header', 'new value');
+
+			response.setHeader(
+				"x-after-set", 
+				request.getHeader('test-header')
+			);
+
+		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		});
+		)");
+
+		//////////////////////////////////////////////
+
+		httplib::Headers headers;
+		headers.emplace("test-header", "header value");
+
+		httplib::Client http_client(HOST);
+		auto response = http_client.Get("/", headers);
+
+		if (!response) Assert::Fail(L"failed to get http response.");
+
+		Assert::AreEqual(
+			response->headers.find("x-before-set") != response->headers.end() &&
+			response->headers.find("x-before-set")->second == "header value",
+			true
+		);
+
+		Assert::AreEqual(
+			response->headers.find("x-after-set") != response->headers.end() &&
+			response->headers.find("x-after-set")->second == "new value",
+			true
+		);
+	}
+	
+	TEST_METHOD(DeleteHeaderRequest)
+	{
+		EXECUTE_SCRIPT(R"(
+		register((response, request) => {
+			response.setHeader(
+				"x-before-delete", 
+				request.getHeader('test-header')
+			);
+
+			request.deleteHeader('test-header');
+
+			response.setHeader(
+				"x-after-delete", 
+				`${request.getHeader('test-header')}`
+			);
+
+		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		});
+		)");
+
+		//////////////////////////////////////////////
+
+		httplib::Headers headers;
+		headers.emplace("test-header", "header value");
+
+		httplib::Client http_client(HOST);
+		auto response = http_client.Get("/", headers);
+
+		if (!response) Assert::Fail(L"failed to get http response.");
+
+		Assert::AreEqual(
+			response->headers.find("x-before-delete") != response->headers.end() &&
+			response->headers.find("x-before-delete")->second == "header value",
+			true
+		);
+
+		Assert::AreEqual(
+			response->headers.find("x-after-delete") != response->headers.end() &&
+			response->headers.find("x-after-delete")->second == "null",
+			true
+		);
+	}
+
 	TEST_METHOD(GetHeader)
 	{
 		EXECUTE_SCRIPT(R"(

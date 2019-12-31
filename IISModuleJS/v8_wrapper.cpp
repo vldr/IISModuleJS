@@ -565,78 +565,108 @@ namespace v8_wrapper
 				return status_code;
 			});
 
-			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): bool
+			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): void
 			module.set("redirect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for redirect");
+
+				////////////////////////////////
+				
 				if (args.Length() < 3) throw std::exception("invalid signature for redirect");
 
-				// The parameters by redirect.
+				////////////////////////////////
+
 				auto url = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
 				auto include_parameters = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+				
+				////////////////////////////////
 
-				// Set our error decription...
-				auto hr  = HTTP_RESPONSE->Redirect(url.c_str(),
+				auto hr  = HTTP_RESPONSE->Redirect(
+					url.c_str(),
 					reset_status_code,
-					include_parameters);
+					include_parameters
+				);
 
-				// Return our result... 
-				return SUCCEEDED(hr);
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to redirect");
 			});
 
-			// setErrorDescription(decription: String, shouldHtmlEncode: bool): bool
+			// setErrorDescription(decription: String, shouldHtmlEncode: bool): void
 			module.set("setErrorDescription", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setErrorDescription");
+
+				////////////////////////////////
+				
 				if (args.Length() < 2) throw std::exception("invalid signature for setErrorDescription");
+
+				////////////////////////////////
 
 				auto description = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
 				auto should_html_encode = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
 
-				// Set our error decription...
-				auto hr  = HTTP_RESPONSE->SetErrorDescription(description.c_str(),
+				////////////////////////////////
+				
+				auto hr= HTTP_RESPONSE->SetErrorDescription(
+					description.c_str(),
 					description.length(), 
-					should_html_encode);
+					should_html_encode
+				);
 
-				// Return our result...
-				return SUCCEEDED(hr);
+				if (FAILED(hr)) throw std::exception("failed to set error description");
 			});
 
 			// disableKernelCache(reason: Number): void
 			module.set("disableKernelCache", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableKernelCache");
+
+				////////////////////////////////
+				
 				if (args.Length() < 1) throw std::exception("invalid signature for disableKernelCache");
+
+				////////////////////////////////
 
 				auto reason = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
 
-				// Disable kernel caching...
-				HTTP_RESPONSE->DisableKernelCache(reason);
+				////////////////////////////////
+
+				HTTP_RESPONSE->DisableKernelCache(
+					reason
+				);
 			});
 
-			// deleteHeader(headerName: String): bool
+			// deleteHeader(headerName: String): void
 			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is valid.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for deleteHeader");
+
+				////////////////////////////////
+				
 				if (args.Length() < 1) throw std::exception("invalid signature for deleteHeader");
+
+				////////////////////////////////
 
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
-				// Attempt to get our header. 
-				auto hr = HTTP_RESPONSE->DeleteHeader(header_name.c_str());
+				////////////////////////////////
 
-				// Check if our header value is valid...
-				RETURN_THIS(
-					SUCCEEDED(hr)
+				auto hr = HTTP_RESPONSE->DeleteHeader(
+					header_name.c_str()
 				);
+				
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to delete header");
 			});
 
 			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getHeader");
+
+				////////////////////////////////
+				
 				if (args.Length() < 1) throw std::exception("invalid signature for getHeader");
+
+				////////////////////////////////
 
 				// Get our header name...
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
@@ -672,7 +702,7 @@ namespace v8_wrapper
 				ArrayBufferScoped array_buffer(args[0]);
 
 				// A constant representing the maximum bytes per HTTP_CHUNK_DATA.
-				const unsigned long MAX_BYTES = 65535;
+				constexpr unsigned long MAX_BYTES = 65535;
 
 				// Setup our length and buffer which will
 				// be used to deliver our content.
@@ -741,10 +771,7 @@ namespace v8_wrapper
 					auto hr = HTTP_RESPONSE->WriteEntityChunks(&data_chunk, 1, FALSE, has_more_data, &cb_sent);
 
 					// Check if our result was not successful.
-					if (FAILED(hr))
-					{
-						throw std::exception("failed to write");
-					}
+					if (FAILED(hr)) throw std::exception("failed to write");
 
 					////////////////////////////////////////
 
@@ -755,29 +782,32 @@ namespace v8_wrapper
 				} while (has_more_data);
 			});
 
-			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): bool
+			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setHeader");
 
-				// Check arguments.
-				if (args.Length() < 2
-					|| !args[0]->IsString() 
-					|| !args[1]->IsString())  
-					throw std::exception("invalid signature for setHeader");
-				 
-				// Get our header name...
+				////////////////////////////////
+
+				if (args.Length() < 2) throw std::exception("invalid signature for setHeader");
+
+				////////////////////////////////
+
 				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
 				auto should_replace = v8pp::from_v8<bool>(args.GetIsolate(), args[2], true);
 
-				// Attempt to get our header. 
-				auto hr = HTTP_RESPONSE->SetHeader( header_name.c_str(),
+				////////////////////////////////
+
+				auto hr = HTTP_RESPONSE->SetHeader(
+					header_name.c_str(),
 					header_value.c_str(), 
 					header_value.length(), 
-					should_replace);  
+					should_replace
+				);
 
-				RETURN_THIS(SUCCEEDED(hr))
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to set header");
 			});
 
 			// Set our internal field count.
@@ -810,11 +840,13 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
+				constexpr size_t BUFFER_SIZE = 4096;
+				
 				std::vector<char> bytes;
-				bytes.reserve(4096);
+				bytes.reserve(BUFFER_SIZE);
 
 				// Since we cannot read the entire entity body in whole
-				// we will receive data in chunks of 4096 bytes.
+				// we will receive data in chunks of BUFFER_SIZE bytes.
 				// Thus we will need to use GetRemainingEntityBytes
 				// to check how many bytes are left for us to insert into
 				// 'bytes'.
@@ -825,7 +857,7 @@ namespace v8_wrapper
 				// Loop until the remaining bytes is zero.
 				while (remaining_bytes != 0)
 				{
-					uint8_t buffer[4096];
+					uint8_t buffer[BUFFER_SIZE];
 					DWORD read_bytes = 0;
 
 					////////////////////////////////
@@ -882,6 +914,57 @@ namespace v8_wrapper
 				);
 			});
 
+			// deleteHeader(headerName: String): void
+			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for deleteHeader");
+
+				///////////////////////////////
+				
+				if (args.Length() < 1) throw std::exception("invalid signature for deleteHeader");
+
+				///////////////////////////////
+
+				auto header_name = v8pp::from_v8<std::string>(isolate, args[0]);
+
+				///////////////////////////////
+
+				auto hr = HTTP_REQUEST->DeleteHeader(
+					header_name.c_str()
+				);
+
+				///////////////////////////////
+				
+				if (FAILED(hr)) throw std::exception("failed to delete header");
+			});
+
+			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
+			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for setHeader");
+
+				////////////////////////////////
+
+				if (args.Length() < 2) throw std::exception("invalid signature for setHeader");
+
+				////////////////////////////////
+
+				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+				auto should_replace = v8pp::from_v8<bool>(args.GetIsolate(), args[2], true);
+
+				////////////////////////////////
+
+				auto hr = HTTP_REQUEST->SetHeader(
+					header_name.c_str(),
+					header_value.c_str(), 
+					header_value.length(), 
+					should_replace
+				);
+
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to set header");
+			});
+
 			// getMethod(): String
 			module.set("getMethod", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
@@ -919,7 +1002,7 @@ namespace v8_wrapper
 			module.set("getQueryString", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
-				RETURN_THIS(
+				RETURN_THIS( 
 					std::wstring(
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pQueryString,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(wchar_t)
