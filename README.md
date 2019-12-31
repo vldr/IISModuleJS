@@ -18,7 +18,7 @@ A middleware for IIS (Internet Information Services) that allows you to harness 
 ### Running Scripts
 All scripts are executed from the `%PUBLIC%` directory. The module watches each script for changes and dynamically reloads a script if a change was found. 
 
-Scripts be should named with their corresponding [application pool name](https://blogs.msdn.microsoft.com/rohithrajan/2017/10/08/quick-reference-iis-application-pool/). For example, the site `vldr.org` would likely have the application pool name `vldr_org` thus the script should be named `vldr_org.js`
+Scripts should be named with their corresponding [application pool name](https://blogs.msdn.microsoft.com/rohithrajan/2017/10/08/quick-reference-iis-application-pool/). For example, the site `vldr.org` would likely have the application pool name `vldr_org` thus the script should be named `vldr_org.js`
 
 You can load as many subsequent scripts as you want using the [load](#loadfilename-string--void) function.
 
@@ -26,7 +26,7 @@ You can load as many subsequent scripts as you want using the [load](#loadfilena
 #### REQUEST_NOTIFICATION_STATUS: enum
 The members of the REQUEST_NOTIFICATION_STATUS enumeration are used as return values from request-level notifications, and the members help to control process flow within the integrated request-processing pipeline.[⁺](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/request-notification-status-enumeration#remarks)
 
-* Use *RQ_NOTIFICATION_CONTINUE* if you want the request continue to other modules and the rest of the pipeline.
+* Use *RQ_NOTIFICATION_CONTINUE* if you want the request to continue to other modules and the rest of the pipeline.
 * Use *RQ_NOTIFICATION_FINISH_REQUEST* if you want the request to be handled only by yourself.
 ```javascript
 enum REQUEST_NOTIFICATION_STATUS {
@@ -44,7 +44,7 @@ enum REQUEST_NOTIFICATION_STATUS {
 #### register(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
 Registers a given function as a callback which will be called for every request.
 
-Your callback function will be provided a [Response](#response-object) object, and a [Request](#request-object) object respectively. The callback function can also be an asynchronous function but keep in mind that this will yield far **worse** performance than using a synchronous function.
+Your callback function will be provided a [Response](#response-object) object, and a [Request](#request-object) object respectively. The callback function can also be asynchronous but keep in mind that this will yield far **worse** performance than using an ordinary function.
 
 ```javascript
 function callback(response, request) 
@@ -59,13 +59,21 @@ register(callback);
 Loads a script using **fileName** as the name of the JavaScript file, the name should include the extension.
 
 ```javascript
-load("test.js");
+// Loads a single script.
+load("script.js");
+
+// Load multiple scripts.
+load("script.js", "script2.js");
 ```
 
 #### print(msg: String, ...): void
 Prints **msg** using OutputDebugString. You can observe the print out using a debugger or [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
 ```javascript
+// Prints "test message."
 print("test message");
+
+// Prints "test message and then some."
+print("test message", "and then some");
 ```
 
 ### IPC: Interface
@@ -125,10 +133,50 @@ register((response, request) =>
 });
 ```
 
+### HTTP: Interface
+
+##### http.fetch(hostname: String, path: String, isSSL: bool, method: String {optional}, params: Object<String, String> {optional}): Promise<{ body: String, status: Number }, String>
+This function only supports POST and GET methods and should **not** be mistaken for the [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) found in the standard web api.
+
+The **hostname** parameter specifies the domain name of the server. 
+
+The **path** parameter specifies the path part of the HTTP request. 
+
+The **method** parameter specifies the method part of the HTTP request, only, GET and POST.
+
+The **params** parameter should be an Object (not an Array) which will represent the collection of key-value POST parameters (imagine an HTML form) for the HTTP POST request.
+
+The example below requires some familiarity with [Promises](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises). This example strictly demonstrates how an async callback can be used, but you can mix async and non-async functions depending on your needs.
+```javascript
+register(
+    // Notice how we're using an asynchronous callback,
+    // this is because we'd like the response from our http.fetch
+    // to be written to the request's body as soon it arrives (using await).
+    async (response, request) => 
+    {
+        // Attempts to fetch the latest comic from xkcd, 
+        // notice how our isSSL is set to true since the api endpoint
+        // is HTTPS.
+        await http.fetch("xkcd.com", "/info.0.json", true)
+            .then((reply) => {
+                // Write our response using the reply body.
+                response.write(reply.body, "application/json");
+            })
+            .catch((error) => {
+                // Write our error as the response.
+                response.write("An error occurred while fetching.", "text/html");
+            });
+    
+        // Finish our request since we want our response to be written.
+        return RQ_NOTIFICATION_FINISH_REQUEST
+    }
+);
+```
+
 ### Request: Object
 
 #### getHost(): String
-Returns the host section of the url for the request.
+Returns the host section of the URL for the request.
 
 ```javascript
 register((response, request) => 
@@ -210,7 +258,7 @@ Returns the address of the local interface for the current request. This will re
 ```javascript
 register((response, request) => 
 {
-    // Prints out the local ip address.
+    // Prints out the local IP address.
     print(
         request.getLocalAddress()
     );
@@ -220,12 +268,12 @@ register((response, request) =>
 ```
 
 #### getRemoteAddress(): String
-Returns the address of the local interface for the current request. This will return either a IPv4 or IPv6 address.
+Returns the address of the local interface for the current request. This will return either an IPv4 or IPv6 address.
 This method can be used to get the connecting client's IP address.
 ```javascript
 register((response, request) => 
 {
-    // Prints out the remote ip address.
+    // Prints out the remote IP address.
     print(
         request.getRemoteAddress()
     );
@@ -291,7 +339,7 @@ Sets or appends the value of a specified HTTP response header.
 
 The **headerName** parameter defines the name of the header, example: "Content-Type."
 The **headerValue** parameter sets the value of the header, example: "text/html."
-The **shouldReplace** paremeter determines whether to replace a preexisting headers value or to append to it. 
+The **shouldReplace** parameter determines whether to replace the value of a preexisting header or to append to it. 
 
 ```javascript
 register((response, request) => 
@@ -316,7 +364,7 @@ register((response, request) =>
     // Gets the value of the server header.
     const serverHeaderValue = response.getHeader('Server');
     
-    // Check if our header exists, in this case it will.
+    // Check if our header exists, in this case, it will.
     if (serverHeaderValue)
         // Prints out "Microsoft-IIS/10.0" (depending on your server version)
         print(serverHeaderValue);
@@ -464,5 +512,3 @@ register((response, request) =>
     return RQ_NOTIFICATION_CONTINUE;
 });
 ```
-
-
