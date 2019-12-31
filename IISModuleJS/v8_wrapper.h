@@ -40,8 +40,10 @@
 
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
 #define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
-#define HTTP_REQUEST ((IHttpRequest*)args.This()->GetAlignedPointerFromInternalField(0))
-#define HTTP_RESPONSE ((IHttpResponse*)args.This()->GetAlignedPointerFromInternalField(0))
+
+#define HTTP_CONTEXT ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))
+#define HTTP_REQUEST ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetRequest()
+#define HTTP_RESPONSE ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetResponse()
 
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))

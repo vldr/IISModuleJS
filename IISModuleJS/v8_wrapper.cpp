@@ -799,7 +799,7 @@ namespace v8_wrapper
 
 			// Setup our functions
 			 
-			// read(): String || null
+			// read(rewrite: bool {optional}): String || null
 			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for read");
 
@@ -845,7 +845,7 @@ namespace v8_wrapper
 
 					////////////////////////////////
 
-					// Update the reamining bytes.
+					// Update the remaining bytes.
 					remaining_bytes = HTTP_REQUEST->GetRemainingEntityBytes();
 				}
 				
@@ -854,6 +854,26 @@ namespace v8_wrapper
 				// Convert byte array to v8::String
 				auto string_object = v8pp::to_v8(isolate, bytes.data(), bytes.size());
 
+				///////////////////////////////
+
+				// rewrite: bool {optional}
+				if (args.Length() >= 1 && v8pp::from_v8<bool>(isolate, args[0]))
+				{
+					auto context_buffer = HTTP_CONTEXT->AllocateRequestMemory(bytes.size());
+
+					///////////////////////////////
+					
+					std::memcpy(context_buffer, bytes.data(), bytes.size());
+
+					///////////////////////////////
+					
+					auto hr = HTTP_REQUEST->InsertEntityBody(context_buffer, bytes.size());
+
+					///////////////////////////////
+
+					if (FAILED(hr)) throw std::exception("failed to rewrite");
+				}
+				
 				///////////////////////////////
 
 				// Set the return value.
@@ -1004,8 +1024,8 @@ namespace v8_wrapper
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
 
 		// Update the pointers in our objects.
-		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext->GetResponse());
-		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext->GetRequest());
+		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext);
+		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext);
 
 		// Setup our arguments...
 		v8::Local<v8::Value> argv[2] = { http_response_object, http_request_object };
