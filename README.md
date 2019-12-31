@@ -175,6 +175,31 @@ register(
 
 ### Request: Object
 
+#### read(): String || null
+Returns the HTTP request body as a String. 
+
+**Note:** Once you read the request body other modules in the pipeline won't be able to read the data you just read. 
+
+```javascript
+register((response, request) => 
+{
+    // This reads the request body.
+    const body = request.read(); 
+    
+    // Prints out the body.
+    print(
+        body
+    );
+
+    // You have to use RQ_NOTIFICATION_FINISH_REQUEST because 
+    // once you read the request data then this module takes the responsiblity
+    // of handling the request entirely, otherwise modules in 
+    // the pipeline wouldn't be able to read any request data since WE 
+    // read it already.
+    return RQ_NOTIFICATION_FINISH_REQUEST;
+});
+```
+
 #### getHost(): String
 Returns the host section of the URL for the request.
 
@@ -434,17 +459,6 @@ Resets the socket connection immediately.
 register((response, request) => 
 {
     response.resetConnection();
-
-    return RQ_NOTIFICATION_CONTINUE;
-});
-```
-
-#### disableBuffering(): void
-Disables response buffering for the current request.
-```javascript
-register((response, request) => 
-{
-    response.disableBuffering();
 
     return RQ_NOTIFICATION_CONTINUE;
 });
