@@ -217,6 +217,57 @@ register((response, request) =>
 });
 ```
 
+#### setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
+Sets or appends the value of a specified HTTP request header. 
+
+The **headerName** parameter defines the name of the header, example: "Content-Type."
+The **headerValue** parameter sets the value of the header, example: "text/html."
+The **shouldReplace** parameter determines whether to replace the value of a preexisting header or to append to it. 
+
+```javascript
+register((response, request) => 
+{
+    // This will replace the 'User-Agent' header with the value 'custom server value'
+    request.setHeader('User-Agent', 'custom server value');
+
+    // This will append 'custom server value 2' to the 'User-Agent' header.
+    request.setHeader('User-Agent', 'custom server value 2', false);
+    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### getHeader(headerName: String): String || null
+Returns the value of a specified HTTP header. 
+If the header doesn't exist this function will return *null* so make sure to check for it.
+
+```javascript
+register((response, request) => 
+{
+    // Gets the value of the User-Agent header.
+    const userAgent = request.getHeader('User-Agent');
+    
+    // Check if our header exists.
+    if (userAgent)
+        // Prints out for example "Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1"
+        print(userAgent);
+   
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### deleteHeader(headerName: String): void
+Deletes an HTTP header from the request.
+
+```javascript
+register((response, request) => 
+{
+    request.deleteHeader('Server');
+
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
 #### getHost(): String
 Returns the host section of the URL for the request.
 
@@ -324,25 +375,6 @@ register((response, request) =>
 });
 ```
 
-#### getHeader(headerName: String): String || null
-Returns the value of a specified HTTP header. 
-If the header doesn't exist this function will return *null* so make sure to check for it.
-
-```javascript
-register((response, request) => 
-{
-    // Gets the value of the User-Agent header.
-    const userAgent = request.getHeader('User-Agent');
-    
-    // Check if our header exists.
-    if (userAgent)
-        // Prints out for example "Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1"
-        print(userAgent);
-   
-    return RQ_NOTIFICATION_CONTINUE;
-});
-```
-
 ### Response: Object
 
 #### write(body: String || Uint8Array, mimeType: String, contentEncoding: String {optional}): void
@@ -376,7 +408,7 @@ register((response, request) =>
 });
 ```
 
-#### setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): bool
+#### setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
 Sets or appends the value of a specified HTTP response header. 
 
 The **headerName** parameter defines the name of the header, example: "Content-Type."
@@ -411,6 +443,18 @@ register((response, request) =>
         // Prints out "Microsoft-IIS/10.0" (depending on your server version)
         print(serverHeaderValue);
    
+    return RQ_NOTIFICATION_CONTINUE;
+});
+```
+
+#### deleteHeader(headerName: String): void
+Deletes an HTTP header from the request.
+
+```javascript
+register((response, request) => 
+{
+    response.deleteHeader('Server');
+
     return RQ_NOTIFICATION_CONTINUE;
 });
 ```
@@ -527,19 +571,6 @@ register((response, request) =>
     
     response.setErrorDescription(HANDLER_HTTPSYS_UNFRIENDLY);
     
-    return RQ_NOTIFICATION_CONTINUE;
-});
-```
-
-
-#### deleteHeader(headerName: String): bool
-Deletes an HTTP header from the request.
-
-```javascript
-register((response, request) => 
-{
-    response.deleteHeader('Server');
-
     return RQ_NOTIFICATION_CONTINUE;
 });
 ```
