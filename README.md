@@ -209,7 +209,7 @@ register((response, request) =>
     
     // Prints out 'null'.
     print(
-        `${body}`
+        body
     );
 
     // End the request here. 
