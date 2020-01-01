@@ -302,7 +302,7 @@ namespace v8_wrapper
 				params
 			] {
 				std::shared_ptr<httplib::Response> response;
-
+				 
 				// Use httplib::SSLClient if our endpoint is secure socket.
 				if (is_ssl)
 				{
@@ -337,8 +337,8 @@ namespace v8_wrapper
 						isolate->GetCurrentContext(),
 						v8pp::to_v8(isolate, "unable to fetch")
 					);
-
-					return;
+					 
+					return; 
 				}
 
 				// Create a response module.
@@ -396,7 +396,7 @@ namespace v8_wrapper
 
 			// Place the value in the key-value store.
 			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
-
+			
 			// Free the buffer after we've placed it into our key-value store.
 			serializer_delegate.FreeBufferMemory(buffer.first);
 		});
@@ -404,7 +404,7 @@ namespace v8_wrapper
 		// ipc.get(key: String): any || null
 		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			// Need this to return our custom object.
-			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate());
+			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate()); 
 			
 			// Check if atleast one argument was provided.
 			if (args.Length() < 1) throw std::exception("invalid function signature for ipc.get");
@@ -445,7 +445,7 @@ namespace v8_wrapper
 
 			// Check if our result was successful.
 			if (!result) RETURN_NULL
-
+			
 			/////////////////////////////////////////////
 
 			// Setup our deserializer delegate.
@@ -454,8 +454,8 @@ namespace v8_wrapper
 			// Setup our value deserializer.
 			v8::ValueDeserializer deserializer(
 				args.GetIsolate(), 
-				buffer.get(), 
-				len, 
+				buffer.get(),
+				len,
 				&deserializer_delegate
 			);
 
@@ -561,8 +561,8 @@ namespace v8_wrapper
 				// Get our status code...
 				HTTP_RESPONSE->GetStatus(&status_code);
 
-				// Return our result.
-				return status_code;
+				// Return our result. 
+				return status_code; 
 			});
 
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): void
@@ -590,7 +590,7 @@ namespace v8_wrapper
 				////////////////////////////////
 
 				if (FAILED(hr)) throw std::exception("failed to redirect");
-			});
+			}); 
 
 			// setErrorDescription(decription: String, shouldHtmlEncode: bool): void
 			module.set("setErrorDescription", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -663,29 +663,42 @@ namespace v8_wrapper
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getHeader");
 
 				////////////////////////////////
-				
+
 				if (args.Length() < 1) throw std::exception("invalid signature for getHeader");
 
 				////////////////////////////////
 
-				// Get our header name...
-				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-				
-				// Header value count.
-				USHORT header_value_count = 0;
+				v8::String::Utf8Value const header_name(isolate, args[0]);
 
-				// Attempt to get our header. 
-				auto header_value = HTTP_RESPONSE->GetHeader(header_name.c_str(), &header_value_count);
+				////////////////////////////////
 
-				// Check if our header value is valid...
-				if (header_value)
-				{
-					RETURN_THIS(std::string(header_value, header_value_count))
-				}
+				if (!*header_name) RETURN_NULL
 
-				// Return null otherwise.
-				RETURN_NULL
-			});
+				////////////////////////////////
+					 
+				USHORT header_value_count = 0; 
+
+				////////////////////////////////
+
+				auto header_value = HTTP_RESPONSE->GetHeader(*header_name, &header_value_count);
+
+				////////////////////////////////
+				 
+				if (!header_value) RETURN_NULL
+
+				////////////////////////////////
+
+				auto string = v8::String::NewFromUtf8(
+					isolate, header_value,
+					v8::NewStringType::kNormal,
+					header_value_count 
+				)
+				.ToLocalChecked();
+
+				////////////////////////////////
+
+				args.GetReturnValue().Set(string);
+			}); 
 	
 			// write(body: String || Uint8Array, mimetype: String, contentEncoding: String {optional}): void
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -729,7 +742,7 @@ namespace v8_wrapper
 				v8::String::Utf8Value mime_type(isolate, args[1]);
 
 				// Check the length of the mime type.
-				if (!mime_type.length()) throw std::exception("second argument is invalid for write");
+				if (!*mime_type) throw std::exception("second argument is invalid for write");
 
 				// Clear and set our header...
 				HTTP_RESPONSE->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
@@ -743,12 +756,12 @@ namespace v8_wrapper
 					v8::String::Utf8Value content_encoding(isolate, args[2]);
 
 					// Check the length of the mime type.
-					if (!content_encoding.length()) throw std::exception("third argument is invalid for write");
+					if (!*content_encoding) throw std::exception("third argument is invalid for write");
 
 					// Clear and set our header...
 					HTTP_RESPONSE->SetHeader(HttpHeaderContentEncoding, *content_encoding, content_encoding.length(), TRUE);
 				}
-
+				  
 				////////////////////////////////////////////////
 
 				unsigned long buffer_offset = 0;
@@ -756,12 +769,12 @@ namespace v8_wrapper
 				bool has_more_data = buffer_size - bytes_to_write > 0;
 
 				// Loop until we write all our data.
-				do
+				do 
 				{ 
 					// Create an array of data chunks.
 					HTTP_DATA_CHUNK data_chunk = HTTP_DATA_CHUNK();
 					unsigned long cb_sent = 0;
-					
+					 
 					// Set the chunk to a chunk in memory.
 					data_chunk.DataChunkType = HttpDataChunkFromMemory;
 					data_chunk.FromMemory.pBuffer = PVOID((unsigned char*)buffer + buffer_offset);
@@ -985,7 +998,7 @@ namespace v8_wrapper
 					)
 				)
 			});
-
+			 
 			// getFullUrl(): String
 			module.set("getFullUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getFullUrl");
@@ -996,7 +1009,7 @@ namespace v8_wrapper
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(wchar_t)
 					)
 				)
-			});
+			}); 
 
 			// getQueryString(): String
 			module.set("getQueryString", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -1032,7 +1045,7 @@ namespace v8_wrapper
 						HTTP_REQUEST->GetLocalAddress()
 					)
 				)
-			});
+			}); 
 
 			// getRemoteAddress(): String
 			module.set("getRemoteAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -1043,34 +1056,49 @@ namespace v8_wrapper
 					sock_to_ip(
 						HTTP_REQUEST->GetRemoteAddress()
 					)
-				)
+				) 
 			});
 
 			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// Check if our http response is set.
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getHeader");
+				
+				////////////////////////////////
 
-				// Check arguments.
-				if (args.Length() < 1 || !args[0]->IsString()) throw std::exception("invalid signature for getHeader");
+				if (args.Length() < 1) throw std::exception("invalid signature for getHeader");
 
-				// Get our header name...
-				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+				////////////////////////////////
 
-				// Header value count.
+				v8::String::Utf8Value const header_name(isolate, args[0]);
+
+				////////////////////////////////
+
+				if (!*header_name) RETURN_NULL
+
+				////////////////////////////////
+				
 				USHORT header_value_count = 0;
 
-				// Attempt to get our header. 
-				auto header_value = HTTP_REQUEST->GetHeader(header_name.c_str(), &header_value_count);
+				////////////////////////////////
+				
+				auto header_value = HTTP_REQUEST->GetHeader(*header_name, &header_value_count);
+                
+				////////////////////////////////
 
-				// Check if our header value is valid...
-				if (header_value)
-				{
-					RETURN_THIS(std::string(header_value, header_value_count))
-				}
+				if (!header_value) RETURN_NULL
 
-				// Return null otherwise.
-				RETURN_NULL
+				////////////////////////////////
+
+				auto string = v8::String::NewFromUtf8(
+					isolate, header_value,
+					v8::NewStringType::kNormal,
+					header_value_count
+				)
+				.ToLocalChecked();
+
+				////////////////////////////////
+
+				args.GetReturnValue().Set(string);
 			});
 
 			module.obj_->SetInternalFieldCount(1);
@@ -1204,7 +1232,6 @@ namespace v8_wrapper
 
 		if (address->sa_family == AF_INET)
 		{
-			// Setup our ip address variable...
 			char ip_address[INET_ADDRSTRLEN] = { 0 };
 			auto socket = (sockaddr_in*)address;
 
@@ -1215,7 +1242,6 @@ namespace v8_wrapper
 		
 		if (address->sa_family == AF_INET6)
 		{
-			// Setup our ip address variable...
 			char ip_address[INET6_ADDRSTRLEN] = { 0 };
 			auto socket = (sockaddr_in6*)address;
 
