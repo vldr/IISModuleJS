@@ -41,7 +41,7 @@ enum REQUEST_NOTIFICATION_STATUS {
 }
 ```
 
-#### register(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
+#### register(callback: Function<Response, Request>: REQUEST_NOTIFICATION_STATUS): void
 Registers a given function as a callback which will be called for every request.
 
 Your callback function will be provided a [Response](#response-object) object, and a [Request](#request-object) object respectively. The callback function can also be asynchronous but keep in mind that this will yield far **worse** performance than using an ordinary function.
@@ -66,7 +66,7 @@ load("script.js");
 load("script.js", "script2.js");
 ```
 
-#### print(msg: String, ...): void
+#### print(msg: any, ...): void
 Prints **msg** using OutputDebugString. You can observe the print out using a debugger or [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
 ```javascript
 // Prints "test message."
