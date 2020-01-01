@@ -198,18 +198,23 @@ namespace v8_wrapper
 		// Setup our global module.
 		v8pp::module global(isolate);
 
-		// print(msg: String, ...): void
+		// print(msg: any, ...): void
 		global.set("print", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			for (int i = 0; i < args.Length(); i++)
 			{
 				// Get the string provided by the user.
-				auto string = v8pp::from_v8<std::string>(args.GetIsolate(), args[i]);
+				v8::String::Utf8Value const value(
+					isolate,
+					args[i]->ToDetailString(
+						args.GetIsolate()->GetCurrentContext()
+					).ToLocalChecked()
+				);
 
-				// Check if first item.
+				// Check if not first item.
 				if (i != 0) vs_printf(" ");
 
 				// Print contents provided.
-				vs_printf("%s", string.c_str());
+				vs_printf("%s", *value);
 			}
 
 			// Print a newline.
