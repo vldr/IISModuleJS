@@ -13,7 +13,7 @@ A middleware for IIS (Internet Information Services) that allows you to harness 
 
 # Getting Started
 ### Installation
-1. Download *iismodulejs.64.dll* from the releases page.
+1. Download *iismodulejs.64.dll* from the [releases](../../releases) page.
 2. Follow the instructions given [here](https://docs.microsoft.com/en-us/iis/develop/runtime-extensibility/develop-a-native-cc-module-for-iis#deploying-a-native-module) to install the dynamic-link library in IIS.
 ### Running Scripts
 All scripts are executed from the `%PUBLIC%` directory. The module watches each script for changes and dynamically reloads a script if a change was found. 
