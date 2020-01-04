@@ -361,7 +361,7 @@ register((response, request) =>
 ```
 
 #### getRemoteAddress(): String
-Returns the address of the local interface for the current request. This will return either an IPv4 or IPv6 address.
+Returns the address of the remote interface for the current request. This will return either an IPv4 or IPv6 address.
 This method can be used to get the connecting client's IP address.
 ```javascript
 register((response, request) => 
