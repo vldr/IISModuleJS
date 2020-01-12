@@ -142,6 +142,8 @@ The **hostname** parameter specifies the domain name of the server.
 
 The **path** parameter specifies the path part of the HTTP request. 
 
+The **isSSL** parameter specifies whether the endpoint is a secure endpoint using TLS.
+
 The **method** parameter specifies the method part of the HTTP request, only, GET and POST.
 
 The **params** parameter should be an Object (not an Array) which will represent the collection of key-value POST parameters (imagine an HTML form) for the HTTP POST request.
