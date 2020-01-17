@@ -50,7 +50,18 @@
 
 namespace v8_wrapper
 {
-	/*
+	/**
+	 * An enum representing different types
+	 * of callbacks.
+	 */
+	enum CALLBACK_TYPES
+	{
+		BEGIN_REQUEST,
+		SEND_RESPONSE,
+		PRE_BEGIN_REQUEST
+	};
+	
+	/**
 	 * The delegate that handles deserialization.
 	 */
 	class DeserializerDelegate : public v8::ValueDeserializer::Delegate
@@ -148,7 +159,7 @@ namespace v8_wrapper
 		v8::ArrayBuffer::Contents m_array_buffer;
 	};
 
-	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext);
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();

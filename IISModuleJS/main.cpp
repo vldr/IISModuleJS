@@ -3,13 +3,23 @@
 /**
  * RegisterModule
  */
-HRESULT __stdcall RegisterModule(DWORD dwServerVersion, IHttpModuleRegistrationInfo * pModuleInfo, IHttpServer * pHttpServer)
+HRESULT WINAPI RegisterModule(DWORD dwServerVersion, IHttpModuleRegistrationInfo * pModuleInfo, IHttpServer * pHttpServer)
 {
 	UNREFERENCED_PARAMETER(dwServerVersion);
 
-	v8_wrapper::start(pHttpServer->GetAppPoolName()); 
+	//////////////////////////////////////
+	
+	v8_wrapper::start(pHttpServer->GetAppPoolName());
 
-	return pModuleInfo->SetRequestNotifications(new ModuleFactory(),
-			RQ_BEGIN_REQUEST,
-		0); 
+	//////////////////////////////////////
+	
+	auto hr = pModuleInfo->SetGlobalNotifications(new HttpGlobalModule(), GL_PRE_BEGIN_REQUEST);
+
+	//////////////////////////////////////
+	
+	if (FAILED(hr)) return hr;
+
+	//////////////////////////////////////
+	
+	return pModuleInfo->SetRequestNotifications(new ModuleFactory(), RQ_BEGIN_REQUEST | RQ_SEND_RESPONSE, 0);
 } 

@@ -11,5 +11,21 @@ public:
 		IN IHttpContext* pHttpContext,
 		IN IHttpEventProvider* pProvider
 	);
+
+	REQUEST_NOTIFICATION_STATUS OnSendResponse(
+		_In_ IHttpContext* pHttpContext,
+		_In_ ISendResponseProvider* pProvider
+	);
+};
+
+class HttpGlobalModule : public CGlobalModule
+{
+public:
+	GLOBAL_NOTIFICATION_STATUS OnGlobalPreBeginRequest(IN IPreBeginRequestProvider* pProvider);
+	
+	VOID Terminate()
+	{
+		delete this;
+	}
 };
 
