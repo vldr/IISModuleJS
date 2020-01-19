@@ -27,8 +27,6 @@ namespace v8_wrapper
 	// Simdb database use for ipc.get and ipc.set
 	simdb db;
 
-	bool asyncCompletionPending = false;
-
 	/**
 	 * The method that initializes everything necessary.
 	 */
@@ -36,15 +34,16 @@ namespace v8_wrapper
 	{ 
 		// Setup our engine thread.
 		std::thread engine_thread([app_pool_name] {	
-			// Setup our db.
 			db = simdb("IISModule", 1024, 4096);
 			db.flush();
 
-			// Set our app pool name up.
+			///////////////////////////
+			
 			script_name = app_pool_name;
 			script_name.append(L".js");
+
+			///////////////////////////
 			 
-			// Initialize...
 			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
 			
 			v8::V8::InitializePlatform(platform.get());
@@ -55,17 +54,18 @@ namespace v8_wrapper
 #else
 			v8::V8::SetFlagsFromString("--always-opt"); 
 #endif
-			// Setup create params...
+			///////////////////////////
+
 			v8::Isolate::CreateParams create_params;
 
 			create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
-			// Setup our isolate...
+			///////////////////////////
+
 			isolate = v8::Isolate::New(create_params);
 
 			//////////////////////////////////////////
 
-			// Load our script and watch them.
 			load_and_watch();
 		});
 		engine_thread.detach();
@@ -82,6 +82,7 @@ namespace v8_wrapper
 
 		global_http_response_object.Reset();
 		global_http_request_object.Reset();
+		
 		function_begin_request.Reset();
 		function_send_response.Reset();
 		function_pre_begin_request.Reset();
@@ -151,6 +152,8 @@ namespace v8_wrapper
 
 		// Bind our execute function to actually execute our scripts.
 		rpc_server.bind("execute", [](std::string script) {
+			reset_engine();
+			
 			return execute_string((char*)script.c_str(), true, true);
 		});
 
@@ -371,6 +374,7 @@ namespace v8_wrapper
 
 					if (method == "GET") response = client.Get(path.c_str());
 					else if (method == "POST") response = client.Post(path.c_str(), params);
+					else if (method == "HEAD") response = client.Head(path.c_str());
 				}
 				// Otherwise, use httplib::Client.
 				else
@@ -379,6 +383,7 @@ namespace v8_wrapper
 
 					if (method == "GET") response = client.Get(path.c_str());
 					else if (method == "POST") response = client.Post(path.c_str(), params);
+					else if (method == "HEAD") response = client.Head(path.c_str());
 				}
 
 				//////////////////////////////////////////
@@ -642,7 +647,7 @@ namespace v8_wrapper
 				////////////////////////////////
 
 				auto url = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
+				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]); 
 				auto include_parameters = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
 				
 				////////////////////////////////
@@ -772,60 +777,64 @@ namespace v8_wrapper
 				// This function can only be called in the SEND_RESPONSE callback
 				// since that is the only time we can reliably read
 				// the data that was written to the response.
-				//
-				// The SEND_RESPONSE callback is called for each chunk, 
-				// therefore at any time you will only have at most one chunk to read.
-				//
-				// Because of this, the code only chooses the first item in the pEntityChunk array.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for read");
+				if (!HTTP_RESPONSE_CHUNKS) throw std::exception("you can only read the response chunks in the SEND_RESPONSE callback.");
 
 				////////////////////////////////////////////////
 
-				auto entity_chunk_count = HTTP_RESPONSE->GetRawHttpResponse()->EntityChunkCount;
+				if (!HTTP_RESPONSE_CHUNKS->m_total_size) RETURN_NULL;
 				
 				////////////////////////////////////////////////
-				
-				if (!entity_chunk_count) RETURN_NULL
 
-				////////////////////////////////////////////////
-
-				auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[0];
-
-				////////////////////////////////////////////////
-				
-				if (chunk.DataChunkType != HttpDataChunkFromMemory) RETURN_NULL
-				if (!chunk.FromMemory.BufferLength) RETURN_NULL
-
-				////////////////////////////////////////////////			
+				bool asArray = v8pp::from_v8<bool>(isolate, args[0], false);
 
 				// Whether to return our buffer as a Uint8Array or as a String.
 				// Uint8Array output is useful to further be able
 				// to decompress a gzip response.
-				bool asArray = v8pp::from_v8<bool>(isolate, args[0], false);
-
-				////////////////////////////////////////////////
-
 				if (asArray)
 				{
 					auto array_buffer = v8::ArrayBuffer::New(
-						isolate, 
-						size_t(chunk.FromMemory.BufferLength)
+						isolate,
+						HTTP_RESPONSE_CHUNKS->m_total_size
 					);
 
 					////////////////////////////////////////////////
-					
-					std::memcpy(
-						array_buffer->GetContents().Data(), 
-						chunk.FromMemory.pBuffer, 
-						chunk.FromMemory.BufferLength
-					);
+
+					int offset = 0;
+
+					////////////////////////////////////////////////
+
+					for (unsigned int i = 0; i < HTTP_RESPONSE_CHUNKS->m_number_of_chunks; i++)
+					{
+						auto chunk = HTTP_RESPONSE_CHUNKS->m_chunks[i];
+
+						////////////////////////////////////////////////
+
+						if (!chunk) continue;
+
+						////////////////////////////////////////////////
+
+						auto chunk_size = HTTP_RESPONSE_CHUNKS->m_chunk_sizes[i];
+
+						////////////////////////////////////////////////
+
+						std::memcpy(
+							(unsigned char*)array_buffer->GetContents().Data() + offset,
+							chunk,
+							chunk_size
+						);
+
+						////////////////////////////////////////////////
+
+						offset += chunk_size;
+					}
 
 					////////////////////////////////////////////////
 
 					auto uint8_array = v8::Uint8Array::New(
-						array_buffer, 
-						0, 
-						size_t(chunk.FromMemory.BufferLength)
+						array_buffer,
+						0,
+						HTTP_RESPONSE_CHUNKS->m_total_size
 					);
 
 					////////////////////////////////////////////////
@@ -836,18 +845,39 @@ namespace v8_wrapper
 				}
 				else
 				{
-					auto string = v8pp::to_v8(
-						isolate, 
-						(char*)chunk.FromMemory.pBuffer, 
-						chunk.FromMemory.BufferLength
-					);
+					auto string = v8::String::Empty(isolate);
 
+					////////////////////////////////////////////////
+					
+					for (unsigned int i = 0; i < HTTP_RESPONSE_CHUNKS->m_number_of_chunks; i++)
+					{
+						auto chunk = HTTP_RESPONSE_CHUNKS->m_chunks[i];
+
+						////////////////////////////////////////////////
+
+						if (!chunk) continue;
+
+						////////////////////////////////////////////////
+
+						auto chunk_size = HTTP_RESPONSE_CHUNKS->m_chunk_sizes[i];
+						
+						////////////////////////////////////////////////
+
+						auto new_string = v8pp::to_v8(isolate, (char*)chunk, chunk_size);
+
+						////////////////////////////////////////////////
+						
+						string = v8::String::Concat(isolate, string, new_string);
+					}
+					
 					////////////////////////////////////////////////
 
 					args.GetReturnValue().Set(
 						string
 					);
 				}
+
+				////////////////////////////////////////////////
 			});
 			
 			// write(body: String || Uint8Array, mimetype: String, contentEncoding: String {optional}): void
@@ -975,7 +1005,7 @@ namespace v8_wrapper
 			});
 
 			// Set our internal field count.
-			module.obj_->SetInternalFieldCount(1);
+			module.obj_->SetInternalFieldCount(2);
 
 			// Reset our pointer...
 			global_http_response_object.Reset(isolate, module.new_instance());
@@ -1262,13 +1292,31 @@ namespace v8_wrapper
 			global_http_request_object.Reset(isolate, module.new_instance());
 		}
 	}
+
+	/**
+	 * Returns a boolean whether a callback is registered.
+	 */
+	bool is_registered(CALLBACK_TYPES type)
+	{
+		switch (type)
+		{
+		case BEGIN_REQUEST:
+			return !function_begin_request.IsEmpty();
+		case SEND_RESPONSE:
+			return !function_send_response.IsEmpty();
+		case PRE_BEGIN_REQUEST:
+			return !function_pre_begin_request.IsEmpty();
+		}
+
+		return false;
+	}
 	 
 	/**
 	 * Handles a callback that is registered in JS.
 	 */
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider)
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pCustomObject)
 	{
-		if (!isolate) return RQ_NOTIFICATION_CONTINUE;
+		if (!isolate) return 0 /* CONTINUE */;
 
 		////////////////////////////////////////////////
 
@@ -1291,11 +1339,7 @@ namespace v8_wrapper
 
 		////////////////////////////////////////////////
 		
-		if (!callback_function || callback_function->IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
-
-		////////////////////////////////////////////////
-
-		asyncCompletionPending = false;
+		if (!callback_function || callback_function->IsEmpty()) return 0 /* CONTINUE */;
 		
 		////////////////////////////////////////////////
 		
@@ -1311,8 +1355,10 @@ namespace v8_wrapper
 		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
 
-		// Update the pointers in our objects.
+		// Update the internal pointers in our objects.
 		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext);
+		http_response_object->SetAlignedPointerInInternalField(1, pCustomObject);
+
 		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext);
 
 		////////////////////////////////////////////////
@@ -1320,25 +1366,8 @@ namespace v8_wrapper
 		// Setup local function...
 		auto local_function = callback_function->Get(isolate);
 
-		// Our argument count.
-		auto argument_count = 2;
-
 		// Our arguments to pass to the callback.
-		v8::Local<v8::Value> arguments[3];
-		arguments[0] = http_response_object;
-		arguments[1] = http_request_object;
-
-		////////////////////////////////////////////////
-
-		// We want to add a third flag for our send response callback.
-		if (type == SEND_RESPONSE)
-		{
-			// Update our argument count.
-			argument_count = 3;
-
-			// Set our third argument to be the provider flags.
-			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pProvider)->GetFlags());
-		}
+		v8::Local<v8::Value> arguments[] = { http_response_object, http_request_object };
 
 		////////////////////////////////////////////////
 
@@ -1346,12 +1375,12 @@ namespace v8_wrapper
 		auto result = local_function->Call(
 			isolate->GetCurrentContext(),
 			v8::Null(isolate),
-			argument_count,
+			std::size(arguments),
 			arguments
 		);
 
 		// Check if our function returned anything...
-		if (result.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
+		if (result.IsEmpty()) return 0 /* CONTINUE */;
 
 		////////////////////////////////////////////////
 
@@ -1362,28 +1391,27 @@ namespace v8_wrapper
 		
 		if (type == PRE_BEGIN_REQUEST && !result_value->IsNumber())
 		{
-			v8pp::throw_ex(isolate, "The PRE_BEGIN_REQUEST callback can only return a GLOBAL_NOTIFICATION_STATUS");
+			v8pp::throw_ex(isolate, "The PRE_BEGIN_REQUEST callback must return either CONTINUE or FINISH.");
 
 			////////////////////////////////////////////////
 
-			return GL_NOTIFICATION_CONTINUE;
+			return 0 /* CONTINUE */;
 		}
 
 		////////////////////////////////////////////////
 
-		// Check if our result is a promise.
 		if (result_value->IsPromise())
 		{	
 			// Get our promise object.
 			auto promise = result_value.As<v8::Promise>();
-			auto state = promise->State();
 
 			// Check if our promise is already fulfilled or rejected.
-			if (state == v8::Promise::kFulfilled || state == v8::Promise::kRejected)
+			if (promise->State() == v8::Promise::kFulfilled || promise->State() == v8::Promise::kRejected)
 			{
 				// Cast our value to a request notification...
 				return REQUEST_NOTIFICATION_STATUS(
-					v8pp::from_v8<int>(isolate, promise->Result(), 0)
+					v8pp::from_v8<int>(isolate, promise->Result(), 0) 
+						? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE
 				);
 			}
 
@@ -1393,7 +1421,8 @@ namespace v8_wrapper
 			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& args)
 			{
 				// Set our default notification status.
-				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0);
+				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0)
+					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE;
 
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
@@ -1423,23 +1452,19 @@ namespace v8_wrapper
 			return RQ_NOTIFICATION_PENDING;
 		}
 
-		////////////////////////////////////////////////
+		///////////////////////////////////////////
 
-		auto return_int_value = v8pp::from_v8<int>(isolate, result_value, 0);
-
-		////////////////////////////////////////////////
-
-		if (type != PRE_BEGIN_REQUEST && return_int_value == RQ_NOTIFICATION_PENDING)
-		{
-			v8pp::throw_ex(
-				isolate, 
-				"You cannot return \"RQ_NOTIFICATION_PENDING\", it is reserved for internal use only."
-			);
-
-			///////////////////////////////////////////
-			
-			return RQ_NOTIFICATION_CONTINUE;
-		}
+		/*
+		 * We need to normalize our return value.
+		 *
+		 * The PRE_BEGIN_REQUEST callback can only return GL_NOTIFICATION_HANDLED or GL_NOTIFICATION_CONTINUE,
+		 * but the other callbacks must return RQ_NOTIFICATION_FINISH_REQUEST or RQ_NOTIFICATION_CONTINUE.
+		 *
+		 * They represent the same action but differ by value.
+		 */
+		auto return_int_value = v8pp::from_v8<int>(isolate, result_value, 0) ? 
+			(type == PRE_BEGIN_REQUEST ? GL_NOTIFICATION_HANDLED : RQ_NOTIFICATION_FINISH_REQUEST)
+			: RQ_NOTIFICATION_CONTINUE;
 
 		///////////////////////////////////////////
 		
@@ -1452,7 +1477,12 @@ namespace v8_wrapper
 	 */
 	std::string sock_to_ip(PSOCKADDR address)
 	{
-		if (!address) throw std::exception("invalid address for sock_to_ip");
+		if (!address)
+		{
+			v8pp::throw_ex(isolate, "invalid address for sock_to_ip");
+			
+			return std::string();
+		}
 
 		if (address->sa_family == AF_INET)
 		{
@@ -1473,8 +1503,9 @@ namespace v8_wrapper
 
 			return std::string(ip_address);
 		}
-		
-		throw std::exception("invalid family for sock_to_ip");
+
+		v8pp::throw_ex(isolate, "invalid family for sock_to_ip");
+		return std::string();
 	}
 
 	/**

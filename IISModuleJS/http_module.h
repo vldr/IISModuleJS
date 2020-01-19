@@ -16,6 +16,10 @@ public:
 		_In_ IHttpContext* pHttpContext,
 		_In_ ISendResponseProvider* pProvider
 	);
+
+private:
+	v8_wrapper::ResponseChunks m_response_chunks
+		= v8_wrapper::ResponseChunks();
 };
 
 class HttpGlobalModule : public CGlobalModule
