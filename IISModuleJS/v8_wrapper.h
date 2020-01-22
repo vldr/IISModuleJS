@@ -44,6 +44,7 @@
 #define HTTP_CONTEXT ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))
 #define HTTP_REQUEST ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetRequest()
 #define HTTP_RESPONSE ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetResponse()
+#define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
 #define HTTP_RESPONSE_CHUNKS ((v8_wrapper::ResponseChunks*)args.This()->GetAlignedPointerFromInternalField(1))
 
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
@@ -60,6 +61,57 @@ namespace v8_wrapper
 		BEGIN_REQUEST,
 		SEND_RESPONSE,
 		PRE_BEGIN_REQUEST
+	};
+
+	/**
+	 * A class representing the http.fetch request object.
+	 */
+	class FetchRequest
+	{
+	public:
+		FetchRequest(std::string hostname, std::string path)
+		: hostname(std::move(hostname)), path(std::move(path))
+		{};
+
+		bool is_ssl = false;
+		std::string hostname;
+		std::string path;
+		std::string method = "GET";
+		std::string body;
+		httplib::Headers headers;
+	};
+
+	/**
+	 * A class that manages the httplib::Response object and
+	 * a persistent handle to the fetch response object.
+	 */
+	class FetchResponse
+	{
+	public:
+		FetchResponse(
+			v8::Isolate* isolate,
+			v8::Local<v8::Object> object,
+			httplib::Response * response
+		) : m_response(response), response_object(isolate, object)
+		{
+			object->SetAlignedPointerInInternalField(0, m_response);
+		}
+		
+		~FetchResponse()
+		{
+			delete m_response;
+		}
+		
+		httplib::Response * m_response;
+		v8::Persistent<v8::Object> response_object;
+	};
+	
+	/**
+	 * A struct representing the Fetch Init Object.
+	 */
+	struct FetchObject
+	{
+		
 	};
 
 	/**
@@ -181,7 +233,11 @@ namespace v8_wrapper
 		v8::ArrayBuffer::Contents m_array_buffer;
 	};
 
-
+	const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
+		const void* lookup_key,
+		const char* const names[],
+		size_t count);
+	
 	bool is_registered(CALLBACK_TYPES type);
 	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pCustomObject = nullptr);
 

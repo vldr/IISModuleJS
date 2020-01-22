@@ -621,114 +621,114 @@ public:
 
   virtual bool is_valid() const;
 
-  std::shared_ptr<Response> Get(const char *path);
+  std::unique_ptr<Response> Get(const char *path);
 
-  std::shared_ptr<Response> Get(const char *path, const Headers &headers);
+  std::unique_ptr<Response> Get(const char *path, const Headers &headers);
 
-  std::shared_ptr<Response> Get(const char *path, Progress progress);
+  std::unique_ptr<Response> Get(const char *path, Progress progress);
 
-  std::shared_ptr<Response> Get(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Get(const char *path, const Headers &headers,
                                 Progress progress);
 
-  std::shared_ptr<Response> Get(const char *path,
+  std::unique_ptr<Response> Get(const char *path,
                                 ContentReceiver content_receiver);
 
-  std::shared_ptr<Response> Get(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Get(const char *path, const Headers &headers,
                                 ContentReceiver content_receiver);
 
-  std::shared_ptr<Response>
+  std::unique_ptr<Response>
   Get(const char *path, ContentReceiver content_receiver, Progress progress);
 
-  std::shared_ptr<Response> Get(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Get(const char *path, const Headers &headers,
                                 ContentReceiver content_receiver,
                                 Progress progress);
 
-  std::shared_ptr<Response> Get(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Get(const char *path, const Headers &headers,
                                 ResponseHandler response_handler,
                                 ContentReceiver content_receiver);
 
-  std::shared_ptr<Response> Get(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Get(const char *path, const Headers &headers,
                                 ResponseHandler response_handler,
                                 ContentReceiver content_receiver,
                                 Progress progress);
 
-  std::shared_ptr<Response> Head(const char *path);
+  std::unique_ptr<Response> Head(const char *path);
 
-  std::shared_ptr<Response> Head(const char *path, const Headers &headers);
+  std::unique_ptr<Response> Head(const char *path, const Headers &headers);
 
-  std::shared_ptr<Response> Post(const char *path, const std::string &body,
+  std::unique_ptr<Response> Post(const char *path, const std::string &body,
                                  const char *content_type);
 
-  std::shared_ptr<Response> Post(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Post(const char *path, const Headers &headers,
                                  const std::string &body,
                                  const char *content_type);
 
-  std::shared_ptr<Response> Post(const char *path, size_t content_length,
+  std::unique_ptr<Response> Post(const char *path, size_t content_length,
                                  ContentProvider content_provider,
                                  const char *content_type);
 
-  std::shared_ptr<Response> Post(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Post(const char *path, const Headers &headers,
                                  size_t content_length,
                                  ContentProvider content_provider,
                                  const char *content_type);
 
-  std::shared_ptr<Response> Post(const char *path, const Params &params);
+  std::unique_ptr<Response> Post(const char *path, const Params &params);
 
-  std::shared_ptr<Response> Post(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Post(const char *path, const Headers &headers,
                                  const Params &params);
 
-  std::shared_ptr<Response> Post(const char *path,
+  std::unique_ptr<Response> Post(const char *path,
                                  const MultipartFormDataItems &items);
 
-  std::shared_ptr<Response> Post(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Post(const char *path, const Headers &headers,
                                  const MultipartFormDataItems &items);
 
-  std::shared_ptr<Response> Put(const char *path, const std::string &body,
+  std::unique_ptr<Response> Put(const char *path, const std::string &body,
                                 const char *content_type);
 
-  std::shared_ptr<Response> Put(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Put(const char *path, const Headers &headers,
                                 const std::string &body,
                                 const char *content_type);
 
-  std::shared_ptr<Response> Put(const char *path, size_t content_length,
+  std::unique_ptr<Response> Put(const char *path, size_t content_length,
                                 ContentProvider content_provider,
                                 const char *content_type);
 
-  std::shared_ptr<Response> Put(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Put(const char *path, const Headers &headers,
                                 size_t content_length,
                                 ContentProvider content_provider,
                                 const char *content_type);
 
-  std::shared_ptr<Response> Patch(const char *path, const std::string &body,
+  std::unique_ptr<Response> Patch(const char *path, const std::string &body,
                                   const char *content_type);
 
-  std::shared_ptr<Response> Patch(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Patch(const char *path, const Headers &headers,
                                   const std::string &body,
                                   const char *content_type);
 
-  std::shared_ptr<Response> Patch(const char *path, size_t content_length,
+  std::unique_ptr<Response> Patch(const char *path, size_t content_length,
                                   ContentProvider content_provider,
                                   const char *content_type);
 
-  std::shared_ptr<Response> Patch(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Patch(const char *path, const Headers &headers,
                                   size_t content_length,
                                   ContentProvider content_provider,
                                   const char *content_type);
 
-  std::shared_ptr<Response> Delete(const char *path);
+  std::unique_ptr<Response> Delete(const char *path);
 
-  std::shared_ptr<Response> Delete(const char *path, const std::string &body,
+  std::unique_ptr<Response> Delete(const char *path, const std::string &body,
                                    const char *content_type);
 
-  std::shared_ptr<Response> Delete(const char *path, const Headers &headers);
+  std::unique_ptr<Response> Delete(const char *path, const Headers &headers);
 
-  std::shared_ptr<Response> Delete(const char *path, const Headers &headers,
+  std::unique_ptr<Response> Delete(const char *path, const Headers &headers,
                                    const std::string &body,
                                    const char *content_type);
 
-  std::shared_ptr<Response> Options(const char *path);
+  std::unique_ptr<Response> Options(const char *path);
 
-  std::shared_ptr<Response> Options(const char *path, const Headers &headers);
+  std::unique_ptr<Response> Options(const char *path, const Headers &headers);
 
   bool send(const Request &req, Response &res);
 
@@ -827,7 +827,7 @@ private:
   bool write_request(Stream &strm, const Request &req, bool last_connection);
   bool redirect(const Request &req, Response &res);
 
-  std::shared_ptr<Response> send_with_content_provider(
+  std::unique_ptr<Response> send_with_content_provider(
       const char *method, const char *path, const Headers &headers,
       const std::string &body, size_t content_length,
       ContentProvider content_provider, const char *content_type);
@@ -3751,7 +3751,7 @@ inline bool Client::write_request(Stream &strm, const Request &req,
   return true;
 }
 
-inline std::shared_ptr<Response> Client::send_with_content_provider(
+inline std::unique_ptr<Response> Client::send_with_content_provider(
     const char *method, const char *path, const Headers &headers,
     const std::string &body, size_t content_length,
     ContentProvider content_provider, const char *content_type) {
@@ -3760,7 +3760,7 @@ inline std::shared_ptr<Response> Client::send_with_content_provider(
   req.headers = headers;
   req.path = path;
 
-  req.headers.emplace("Content-Type", content_type);
+  //req.headers.emplace("Content-Type", content_type);
 
 #ifdef CPPHTTPLIB_ZLIB_SUPPORT
   if (compress_) {
@@ -3790,9 +3790,9 @@ inline std::shared_ptr<Response> Client::send_with_content_provider(
     }
   }
 
-  auto res = std::make_shared<Response>();
+  auto res = std::make_unique<Response>();
 
-  return send(req, *res) ? res : nullptr;
+  return send(req, *res) ? std::move(res) : nullptr;
 }
 
 inline bool Client::process_request(Stream &strm, const Request &req,
@@ -3856,21 +3856,21 @@ inline bool Client::process_and_close_socket(
 
 inline bool Client::is_ssl() const { return false; }
 
-inline std::shared_ptr<Response> Client::Get(const char *path) {
+inline std::unique_ptr<Response> Client::Get(const char *path) {
   return Get(path, Headers(), Progress());
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              Progress progress) {
   return Get(path, Headers(), std::move(progress));
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              const Headers &headers) {
   return Get(path, headers, Progress());
 }
 
-inline std::shared_ptr<Response>
+inline std::unique_ptr<Response>
 Client::Get(const char *path, const Headers &headers, Progress progress) {
   Request req;
   req.method = "GET";
@@ -3878,42 +3878,42 @@ Client::Get(const char *path, const Headers &headers, Progress progress) {
   req.headers = headers;
   req.progress = std::move(progress);
 
-  auto res = std::make_shared<Response>();
-  return send(req, *res) ? res : nullptr;
+  auto res = std::make_unique<Response>();
+  return send(req, *res) ? std::move(res) : nullptr;
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              ContentReceiver content_receiver) {
   return Get(path, Headers(), nullptr, std::move(content_receiver), Progress());
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              ContentReceiver content_receiver,
                                              Progress progress) {
   return Get(path, Headers(), nullptr, std::move(content_receiver), std::move(progress));
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              const Headers &headers,
                                              ContentReceiver content_receiver) {
   return Get(path, headers, nullptr, std::move(content_receiver), Progress());
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              const Headers &headers,
                                              ContentReceiver content_receiver,
                                              Progress progress) {
   return Get(path, headers, nullptr, std::move(content_receiver), std::move(progress));
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              const Headers &headers,
                                              ResponseHandler response_handler,
                                              ContentReceiver content_receiver) {
   return Get(path, headers, std::move(response_handler), content_receiver, Progress());
 }
 
-inline std::shared_ptr<Response> Client::Get(const char *path,
+inline std::unique_ptr<Response> Client::Get(const char *path,
                                              const Headers &headers,
                                              ResponseHandler response_handler,
                                              ContentReceiver content_receiver,
@@ -3926,53 +3926,59 @@ inline std::shared_ptr<Response> Client::Get(const char *path,
   req.content_receiver = std::move(content_receiver);
   req.progress = std::move(progress);
 
-  auto res = std::make_shared<Response>();
-  return send(req, *res) ? res : nullptr;
+  auto res = std::make_unique<Response>();
+  return send(req, *res) ? std::move(res) : nullptr;
 }
 
-inline std::shared_ptr<Response> Client::Head(const char *path) {
+inline std::unique_ptr<Response> Client::Head(const char *path) {
   return Head(path, Headers());
 }
 
-inline std::shared_ptr<Response> Client::Head(const char *path,
+inline std::unique_ptr<Response> Client::Head(const char *path,
                                               const Headers &headers) {
   Request req;
   req.method = "HEAD";
   req.headers = headers;
   req.path = path;
 
-  auto res = std::make_shared<Response>();
+  auto res = std::make_unique<Response>();
 
-  return send(req, *res) ? res : nullptr;
+  return send(req, *res) ? std::move(res) : nullptr;
 }
 
-inline std::shared_ptr<Response> Client::Post(const char *path,
+inline std::unique_ptr<Response> Client::Post(const char *path,
                                               const std::string &body,
                                               const char *content_type) {
   return Post(path, Headers(), body, content_type);
 }
 
-inline std::shared_ptr<Response> Client::Post(const char *path,
+inline std::unique_ptr<Response> Client::Post(const char *path,
                                               const Headers &headers,
                                               const std::string &body,
-                                              const char *content_type) {
+                                              const char *content_type = nullptr) {
   return send_with_content_provider("POST", path, headers, body, 0, nullptr,
                                     content_type);
 }
 
-inline std::shared_ptr<Response> Client::Post(const char *path,
+inline std::unique_ptr<Response> Client::Post(const char *path,
                                               const Params &params) {
   return Post(path, Headers(), params);
 }
 
-inline std::shared_ptr<Response> Client::Post(const char *path,
+inline std::unique_ptr<Response> Client::Post(const char *path, const Headers &headers,
+                                              const Params &params) {
+  return Post(path, headers, params);
+}
+
+
+inline std::unique_ptr<Response> Client::Post(const char *path,
                                               size_t content_length,
                                               ContentProvider content_provider,
                                               const char *content_type) {
   return Post(path, Headers(), content_length, content_provider, content_type);
 }
 
-inline std::shared_ptr<Response>
+inline std::unique_ptr<Response>
 Client::Post(const char *path, const Headers &headers, size_t content_length,
              ContentProvider content_provider, const char *content_type) {
   return send_with_content_provider("POST", path, headers, std::string(),
@@ -3980,25 +3986,13 @@ Client::Post(const char *path, const Headers &headers, size_t content_length,
                                     content_type);
 }
 
-inline std::shared_ptr<Response>
-Client::Post(const char *path, const Headers &headers, const Params &params) {
-  std::string query;
-  for (auto it = params.begin(); it != params.end(); ++it) {
-    if (it != params.begin()) { query += "&"; }
-    query += it->first;
-    query += "=";
-    query += detail::encode_url(it->second);
-  }
 
-  return Post(path, headers, query, "application/x-www-form-urlencoded");
-}
-
-inline std::shared_ptr<Response>
+inline std::unique_ptr<Response>
 Client::Post(const char *path, const MultipartFormDataItems &items) {
   return Post(path, Headers(), items);
 }
 
-inline std::shared_ptr<Response>
+inline std::unique_ptr<Response>
 Client::Post(const char *path, const Headers &headers,
              const MultipartFormDataItems &items) {
   auto boundary = detail::make_multipart_data_boundary();
@@ -4025,28 +4019,28 @@ Client::Post(const char *path, const Headers &headers,
   return Post(path, headers, body, content_type.c_str());
 }
 
-inline std::shared_ptr<Response> Client::Put(const char *path,
+inline std::unique_ptr<Response> Client::Put(const char *path,
                                              const std::string &body,
-                                             const char *content_type) {
+                                             const char *content_type = "") {
   return Put(path, Headers(), body, content_type);
 }
 
-inline std::shared_ptr<Response> Client::Put(const char *path,
+inline std::unique_ptr<Response> Client::Put(const char *path,
                                              const Headers &headers,
                                              const std::string &body,
-                                             const char *content_type) {
+                                             const char *content_type = "") {
   return send_with_content_provider("PUT", path, headers, body, 0, nullptr,
                                     content_type);
 }
 
-inline std::shared_ptr<Response> Client::Put(const char *path,
+inline std::unique_ptr<Response> Client::Put(const char *path,
                                              size_t content_length,
                                              ContentProvider content_provider,
                                              const char *content_type) {
   return Put(path, Headers(), content_length, content_provider, content_type);
 }
 
-inline std::shared_ptr<Response>
+inline std::unique_ptr<Response>
 Client::Put(const char *path, const Headers &headers, size_t content_length,
             ContentProvider content_provider, const char *content_type) {
   return send_with_content_provider("PUT", path, headers, std::string(),
@@ -4054,13 +4048,13 @@ Client::Put(const char *path, const Headers &headers, size_t content_length,
                                     content_type);
 }
 
-inline std::shared_ptr<Response> Client::Patch(const char *path,
+inline std::unique_ptr<Response> Client::Patch(const char *path,
                                                const std::string &body,
                                                const char *content_type) {
   return Patch(path, Headers(), body, content_type);
 }
 
-inline std::shared_ptr<Response> Client::Patch(const char *path,
+inline std::unique_ptr<Response> Client::Patch(const char *path,
                                                const Headers &headers,
                                                const std::string &body,
                                                const char *content_type) {
@@ -4068,14 +4062,14 @@ inline std::shared_ptr<Response> Client::Patch(const char *path,
                                     content_type);
 }
 
-inline std::shared_ptr<Response> Client::Patch(const char *path,
+inline std::unique_ptr<Response> Client::Patch(const char *path,
                                                size_t content_length,
                                                ContentProvider content_provider,
                                                const char *content_type) {
   return Patch(path, Headers(), content_length, content_provider, content_type);
 }
 
-inline std::shared_ptr<Response>
+inline std::unique_ptr<Response>
 Client::Patch(const char *path, const Headers &headers, size_t content_length,
               ContentProvider content_provider, const char *content_type) {
   return send_with_content_provider("PATCH", path, headers, std::string(),
@@ -4083,25 +4077,25 @@ Client::Patch(const char *path, const Headers &headers, size_t content_length,
                                     content_type);
 }
 
-inline std::shared_ptr<Response> Client::Delete(const char *path) {
+inline std::unique_ptr<Response> Client::Delete(const char *path) {
   return Delete(path, Headers(), std::string(), nullptr);
 }
 
-inline std::shared_ptr<Response> Client::Delete(const char *path,
+inline std::unique_ptr<Response> Client::Delete(const char *path,
                                                 const std::string &body,
                                                 const char *content_type) {
   return Delete(path, Headers(), body, content_type);
 }
 
-inline std::shared_ptr<Response> Client::Delete(const char *path,
+inline std::unique_ptr<Response> Client::Delete(const char *path,
                                                 const Headers &headers) {
   return Delete(path, headers, std::string(), nullptr);
 }
 
-inline std::shared_ptr<Response> Client::Delete(const char *path,
+inline std::unique_ptr<Response> Client::Delete(const char *path,
                                                 const Headers &headers,
                                                 const std::string &body,
-                                                const char *content_type) {
+                                                const char *content_type = nullptr) {
   Request req;
   req.method = "DELETE";
   req.headers = headers;
@@ -4110,25 +4104,25 @@ inline std::shared_ptr<Response> Client::Delete(const char *path,
   if (content_type) { req.headers.emplace("Content-Type", content_type); }
   req.body = body;
 
-  auto res = std::make_shared<Response>();
+  auto res = std::make_unique<Response>();
 
-  return send(req, *res) ? res : nullptr;
+  return send(req, *res) ? std::move(res) : nullptr;
 }
 
-inline std::shared_ptr<Response> Client::Options(const char *path) {
+inline std::unique_ptr<Response> Client::Options(const char *path) {
   return Options(path, Headers());
 }
 
-inline std::shared_ptr<Response> Client::Options(const char *path,
+inline std::unique_ptr<Response> Client::Options(const char *path,
                                                  const Headers &headers) {
   Request req;
   req.method = "OPTIONS";
   req.path = path;
   req.headers = headers;
 
-  auto res = std::make_shared<Response>();
+  auto res = std::make_unique<Response>();
 
-  return send(req, *res) ? res : nullptr;
+  return send(req, *res) ? std::move(res) : nullptr;
 }
 
 inline void Client::set_timeout_sec(time_t timeout_sec) {
@@ -4255,13 +4249,13 @@ inline bool process_and_close_socket_ssl(
 }
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-static std::shared_ptr<std::vector<std::mutex>> openSSL_locks_;
+static std::unique_ptr<std::vector<std::mutex>> openSSL_locks_;
 
 class SSLThreadLocks {
 public:
   SSLThreadLocks() {
     openSSL_locks_ =
-        std::make_shared<std::vector<std::mutex>>(CRYPTO_num_locks());
+        std::make_unique<std::vector<std::mutex>>(CRYPTO_num_locks());
     CRYPTO_set_locking_callback(locking_callback);
   }
 
