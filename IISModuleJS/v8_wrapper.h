@@ -44,8 +44,8 @@
 #define HTTP_CONTEXT ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))
 #define HTTP_REQUEST ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetRequest()
 #define HTTP_RESPONSE ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetResponse()
+
 #define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
-#define HTTP_RESPONSE_CHUNKS ((v8_wrapper::ResponseChunks*)args.This()->GetAlignedPointerFromInternalField(1))
 
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))
@@ -61,6 +61,38 @@ namespace v8_wrapper
 		BEGIN_REQUEST,
 		SEND_RESPONSE,
 		PRE_BEGIN_REQUEST
+	};
+
+	/**
+	 * A class which allows the ability to allocate an
+	 * external char array to be used with a v8::String.
+	 */
+	class ExternalString : public v8::String::ExternalOneByteStringResource
+	{
+	public:
+		ExternalString(size_t length)
+		{
+			data_ = new char[length];
+			length_ = length;
+		}
+
+		~ExternalString() override
+		{
+			delete[] data_;
+		}
+
+		const char* data() const override
+		{
+			return (const char*)data_;
+		}
+
+		size_t length() const override
+		{
+			return length_;
+		}
+	private:
+		char* data_;
+		size_t length_;
 	};
 
 	/**
@@ -104,35 +136,6 @@ namespace v8_wrapper
 		
 		httplib::Response * m_response;
 		v8::Persistent<v8::Object> response_object;
-	};
-	
-	/**
-	 * A struct representing the Fetch Init Object.
-	 */
-	struct FetchObject
-	{
-		
-	};
-
-	/**
-	 * A class organizing all the chunks in the SEND_RESPONSE callback.
-	 */
-	class ResponseChunks
-	{
-	public:
-		static constexpr unsigned int MAX_CHUNKS = 1024;
-
-		// Represents the number of chunks in the response.
-		unsigned int m_number_of_chunks = 0;
-
-		// An array of pointers pointing to all the chunks.
-		void* m_chunks[MAX_CHUNKS];
-
-		// An array of uints containing the sizes of each chunk.
-		unsigned int m_chunk_sizes[MAX_CHUNKS];
-
-		// The total number of bytes of chunks there are.
-		size_t m_total_size = 0;
 	};
 	
 	/**
@@ -238,8 +241,7 @@ namespace v8_wrapper
 		const char* const names[],
 		size_t count);
 	
-	bool is_registered(CALLBACK_TYPES type);
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pCustomObject = nullptr);
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();

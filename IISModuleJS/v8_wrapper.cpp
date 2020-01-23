@@ -483,7 +483,7 @@ namespace v8_wrapper
 						}
 					}
 				}
-			}
+			} 
 
 			////////////////////////////////////
 			
@@ -545,7 +545,7 @@ namespace v8_wrapper
 				}
 				else
 				{
-					httplib::Client client(fetch_request.hostname);
+					httplib::Client client(fetch_request.hostname);	
 
 					if (fetch_request.method == "GET")
 					{
@@ -1101,68 +1101,74 @@ namespace v8_wrapper
 
 			// read(asArray: bool {optional}): String || Uint8Array || null
 			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				// REMARK:
-				// This function can only be called in the SEND_RESPONSE callback
-				// since that is the only time we can reliably read
-				// the data that was written to the response.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for read");
-				if (!HTTP_RESPONSE_CHUNKS) throw std::exception("you can only read the response chunks in the SEND_RESPONSE callback.");
 
 				////////////////////////////////////////////////
 
-				if (!HTTP_RESPONSE_CHUNKS->m_total_size) RETURN_NULL;
+				auto chunk_count = HTTP_RESPONSE->GetRawHttpResponse()->EntityChunkCount;
+
+				////////////////////////////////////////////////
+
+				if (!chunk_count) RETURN_NULL
+
+				////////////////////////////////////////////////
+
+				size_t total_size = 0;
 				
-				////////////////////////////////////////////////
+				for (unsigned int i = 0; i < chunk_count; i++)
+				{
+					auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
+
+					////////////////////////////////////////////////
+
+					if (chunk.DataChunkType != HttpDataChunkFromMemory) continue;
+
+					////////////////////////////////////////////////
+
+					total_size += chunk.FromMemory.BufferLength;
+				}
+
+				if (!total_size) RETURN_NULL
+
+				////////////////////////////////////////////////			
 
 				bool asArray = v8pp::from_v8<bool>(isolate, args[0], false);
 
-				// Whether to return our buffer as a Uint8Array or as a String.
-				// Uint8Array output is useful to further be able
-				// to decompress a gzip response.
+				////////////////////////////////////////////////
+
 				if (asArray)
 				{
 					auto array_buffer = v8::ArrayBuffer::New(
 						isolate,
-						HTTP_RESPONSE_CHUNKS->m_total_size
+						total_size
 					);
 
 					////////////////////////////////////////////////
-
-					int offset = 0;
-
-					////////////////////////////////////////////////
-
-					for (unsigned int i = 0; i < HTTP_RESPONSE_CHUNKS->m_number_of_chunks; i++)
+					
+					for (unsigned int i = 0; i < chunk_count; i++)
 					{
-						auto chunk = HTTP_RESPONSE_CHUNKS->m_chunks[i];
+						auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
 
 						////////////////////////////////////////////////
 
-						if (!chunk) continue;
-
-						////////////////////////////////////////////////
-
-						auto chunk_size = HTTP_RESPONSE_CHUNKS->m_chunk_sizes[i];
+						if (chunk.DataChunkType != HttpDataChunkFromMemory) continue;
+						if (!chunk.FromMemory.BufferLength) continue;
 
 						////////////////////////////////////////////////
 
 						std::memcpy(
-							(unsigned char*)array_buffer->GetContents().Data() + offset,
-							chunk,
-							chunk_size
+							array_buffer->GetContents().Data(),
+							chunk.FromMemory.pBuffer,
+							chunk.FromMemory.BufferLength
 						);
-
-						////////////////////////////////////////////////
-
-						offset += chunk_size;
-					}
+					}	
 
 					////////////////////////////////////////////////
 
 					auto uint8_array = v8::Uint8Array::New(
 						array_buffer,
 						0,
-						HTTP_RESPONSE_CHUNKS->m_total_size
+						total_size
 					);
 
 					////////////////////////////////////////////////
@@ -1173,40 +1179,43 @@ namespace v8_wrapper
 				}
 				else
 				{
-					auto string = v8::String::Empty(isolate);
+					auto external_string = new ExternalString(total_size);
 
 					////////////////////////////////////////////////
-					
-					for (unsigned int i = 0; i < HTTP_RESPONSE_CHUNKS->m_number_of_chunks; i++)
+
+					for (unsigned int i = 0; i < chunk_count; i++)
 					{
-						auto chunk = HTTP_RESPONSE_CHUNKS->m_chunks[i];
+						auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
 
 						////////////////////////////////////////////////
 
-						if (!chunk) continue;
+						if (chunk.DataChunkType != HttpDataChunkFromMemory) continue;
+						if (!chunk.FromMemory.BufferLength) continue;
 
 						////////////////////////////////////////////////
 
-						auto chunk_size = HTTP_RESPONSE_CHUNKS->m_chunk_sizes[i];
-						
-						////////////////////////////////////////////////
-
-						auto new_string = v8pp::to_v8(isolate, (char*)chunk, chunk_size);
-
-						////////////////////////////////////////////////
-						
-						string = v8::String::Concat(isolate, string, new_string);
+						std::memcpy(
+							(void*)external_string->data(),
+							chunk.FromMemory.pBuffer,
+							chunk.FromMemory.BufferLength
+						);
 					}
+
+					////////////////////////////////////////////////
+
+					auto string = v8::String::NewExternalOneByte(isolate, external_string);
+
+					////////////////////////////////////////////////
+
+					if (string.IsEmpty()) throw std::exception("failed to obtain string");
 					
 					////////////////////////////////////////////////
 
 					args.GetReturnValue().Set(
-						string
+						string.ToLocalChecked()
 					);
 				}
-
-				////////////////////////////////////////////////
-			});
+				});
 			
 			// write(body: String || Uint8Array, mimetype: String {optional}, contentEncoding: String {optional}): void
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -1338,7 +1347,7 @@ namespace v8_wrapper
 			});
 
 			// Set our internal field count.
-			module.obj_->SetInternalFieldCount(2);
+			module.obj_->SetInternalFieldCount(1);
 
 			// Reset our pointer...
 			global_http_response_object.Reset(isolate, module.new_instance());
@@ -1650,29 +1659,11 @@ namespace v8_wrapper
 			global_http_request_object.Reset(isolate, module.new_instance());
 		}
 	}
-
-	/**
-	 * Returns a boolean whether a callback is registered.
-	 */
-	bool is_registered(CALLBACK_TYPES type)
-	{
-		switch (type)
-		{
-		case BEGIN_REQUEST:
-			return !function_begin_request.IsEmpty();
-		case SEND_RESPONSE:
-			return !function_send_response.IsEmpty();
-		case PRE_BEGIN_REQUEST:
-			return !function_pre_begin_request.IsEmpty();
-		}
-
-		return false;
-	}
 	 
 	/**
 	 * Handles a callback that is registered in JS.
 	 */
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pCustomObject)
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider)
 	{
 		if (!isolate) return 0 /* CONTINUE */;
 
@@ -1713,27 +1704,40 @@ namespace v8_wrapper
 		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
 
-		// Update the internal pointers in our objects.
+		// Set the internal pointers in the objects.
 		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext);
-		http_response_object->SetAlignedPointerInInternalField(1, pCustomObject);
-
 		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext);
 
 		////////////////////////////////////////////////
 		
-		// Setup local function...
 		auto local_function = callback_function->Get(isolate);
 
+		// Our argument count.
+		auto argument_count = 2;
+
 		// Our arguments to pass to the callback.
-		v8::Local<v8::Value> arguments[] = { http_response_object, http_request_object };
+		v8::Local<v8::Value> arguments[3];
+		arguments[0] = http_response_object;
+		arguments[1] = http_request_object;
 
 		////////////////////////////////////////////////
 
-		// Attempt to get our registered our callback and call it.
+		// We want to add a third flag for our send response callback.
+		if (type == SEND_RESPONSE)
+		{
+			// Update our argument count.
+			argument_count = 3;
+
+			// Set our third argument to be the provider flags.
+			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pProvider)->GetFlags());
+		}
+
+		////////////////////////////////////////////////
+
 		auto result = local_function->Call(
 			isolate->GetCurrentContext(),
 			v8::Null(isolate),
-			std::size(arguments),
+			argument_count,
 			arguments
 		);
 
