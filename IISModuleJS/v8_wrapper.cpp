@@ -324,7 +324,7 @@ namespace v8_wrapper
 
 			////////////////////////////////////////////////
 			
-			switch (type)
+			switch (type) 
 			{
 			case BEGIN_REQUEST:
 				function_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(args[1]));
@@ -348,7 +348,7 @@ namespace v8_wrapper
 		// http.fetch(
 		//	   hostname: String,
 		//	   path: String, 
-		//	   init: bool {optional},
+		//	   init: Object {optional},
 		// ): Promise
 		http_module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 2) 
@@ -767,8 +767,7 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Initializes two global objects named http_response and http_request.
-	 * They are the wrappers for IHttpRequest and IHttpResponse.
+	 * Initializes global objects.
 	 */
 	void initialize_objects()
 	{
@@ -789,14 +788,14 @@ namespace v8_wrapper
 
 			// status(): number
 			module.set("status", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!FETCH_RESPONSE) throw std::exception("invalid p_http_response for clear");
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for status");
 
 				RETURN_THIS(FETCH_RESPONSE->status)
 			});
 
 			// text(): String || null
 			module.set("text", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!FETCH_RESPONSE) throw std::exception("invalid p_http_response for clear");
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for text");
 
 				auto body = FETCH_RESPONSE->body;
 
@@ -811,7 +810,7 @@ namespace v8_wrapper
 
 			// blob(): Uint8Array || null
 			module.set("blob", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!FETCH_RESPONSE) throw std::exception("invalid p_http_response for clear");
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for blob");
 
 				////////////////////////////////////////////////
 
@@ -851,7 +850,7 @@ namespace v8_wrapper
 
 			// headers(): Object<String, String> || null
 			module.set("headers", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!FETCH_RESPONSE) throw std::exception("invalid p_http_response for clear");
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for headers");
 
 				////////////////////////////////////////////////
 
@@ -946,7 +945,7 @@ namespace v8_wrapper
 			module.set("resetConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for resetConnection");
 					
-				HTTP_RESPONSE->ResetConnection();
+				HTTP_RESPONSE->ResetConnection(); 
 			});
 							
 			// getStatus(): Number
@@ -1144,6 +1143,8 @@ namespace v8_wrapper
 					);
 
 					////////////////////////////////////////////////
+
+					size_t offset = 0;
 					
 					for (unsigned int i = 0; i < chunk_count; i++)
 					{
@@ -1157,10 +1158,14 @@ namespace v8_wrapper
 						////////////////////////////////////////////////
 
 						std::memcpy(
-							array_buffer->GetContents().Data(),
+							(uint8_t*)array_buffer->GetContents().Data() + offset,
 							chunk.FromMemory.pBuffer,
 							chunk.FromMemory.BufferLength
 						);
+
+						////////////////////////////////////////////////
+						
+						offset += chunk.FromMemory.BufferLength;
 					}	
 
 					////////////////////////////////////////////////
@@ -1183,6 +1188,8 @@ namespace v8_wrapper
 
 					////////////////////////////////////////////////
 
+					size_t offset = 0;
+					
 					for (unsigned int i = 0; i < chunk_count; i++)
 					{
 						auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
@@ -1195,10 +1202,14 @@ namespace v8_wrapper
 						////////////////////////////////////////////////
 
 						std::memcpy(
-							(void*)external_string->data(),
+							(uint8_t*)external_string->data() + offset,
 							chunk.FromMemory.pBuffer,
 							chunk.FromMemory.BufferLength
 						);
+
+						////////////////////////////////////////////////
+
+						offset += chunk.FromMemory.BufferLength;
 					}
 
 					////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 #include "http_module.h"
  
 #pragma comment( lib, "ole32.lib" )
-#pragma comment( lib, "oleaut32.lib" )
+#pragma comment( lib, "oleaut32.lib" ) 
 
 /**
  * OnBeginRequest

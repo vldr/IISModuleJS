@@ -36,6 +36,8 @@
 #include <v8pp/class.hpp>
 #include <v8pp/module.hpp>
 #include <thread>
+
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
