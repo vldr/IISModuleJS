@@ -1,5 +1,7 @@
 #include "CppUnitTest.h"
 #include "helpers.h"
+#include <httplib/httplib.h>
+#include <rpc/client.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
  

@@ -1,5 +1,7 @@
 #include "CppUnitTest.h"
 #include "helpers.h"
+#include <httplib/httplib.h>
+#include <rpc/client.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -12,7 +14,7 @@ public:
 		register(async (response, request) => {
 			if (request.getAbsPath() == "/secret") 
 			{
-				response.write("secret", "text/html");
+				response.write("secret", "text/html"); 
 			}
 			else
 			{
