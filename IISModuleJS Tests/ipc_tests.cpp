@@ -25,7 +25,7 @@ public:
 				"application/json"
 			);
 
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -56,7 +56,7 @@ public:
 				"application/json"
 			);
 
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 

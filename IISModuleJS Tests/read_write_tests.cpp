@@ -37,7 +37,7 @@ public:
 			register((response, request) => {
 			    response.write(')" + random_string_value +  R"(', 'text/html');
 
-			    return RQ_NOTIFICATION_FINISH_REQUEST;
+			    return FINISH;
 			});
 			)";
 
@@ -93,7 +93,7 @@ public:
 			register((response, request) => {
 			    response.write(new Uint8Array([)" + std::get<0>(random_string_value) + R"(]), 'text/html');
 
-			    return RQ_NOTIFICATION_FINISH_REQUEST;
+			    return FINISH;
 			});
 			)";
 
@@ -117,7 +117,7 @@ public:
 			register((response, request) => {
 			    response.write(new Uint8Array([]), 'text/html', 'deflate');
 
-			    return RQ_NOTIFICATION_FINISH_REQUEST;
+			    return FINISH;
 			});
 			)";
 
@@ -144,7 +144,7 @@ public:
 				"text/html"
 			);
 
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -194,7 +194,7 @@ public:
 				"text/html"
 			);
 
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 		

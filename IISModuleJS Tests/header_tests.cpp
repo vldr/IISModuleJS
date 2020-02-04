@@ -14,7 +14,7 @@ public:
 		register((response, request) => {
 		    response.setHeader('x-test-header', 'header value', false);
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -32,13 +32,36 @@ public:
 		);
 	}
 
+	TEST_METHOD(SetStatus)
+	{
+		EXECUTE_SCRIPT(R"(
+		register((response, request) => {
+		    response.setStatus(505, "Test Message");
+
+		    return FINISH;
+		});
+		)");
+
+		//////////////////////////////////////////////
+
+		httplib::Client http_client(HOST);
+		auto response = http_client.Get("/");
+
+		if (!response) Assert::Fail(L"failed to get http response.");
+
+		Assert::AreEqual(
+			response->status == 505,
+			true
+		);
+	}
+
 	TEST_METHOD(SetHeaderReplace)
 	{
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 		    response.setHeader('Server', 'new server', true);
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -62,7 +85,7 @@ public:
 		register((response, request) => {
 		    response.setHeader('Server', 'new server', false);
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -85,7 +108,7 @@ public:
 		register((response, request) => {
 		    response.setHeader('x-test-header', '', false);
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -108,7 +131,7 @@ public:
 		register((response, request) => {
 		    response.deleteHeader('Server');
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -141,7 +164,7 @@ public:
 				request.getHeader('test-header')
 			);
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -184,7 +207,7 @@ public:
 				`${request.getHeader('test-header')}`
 			);
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -220,7 +243,7 @@ public:
 		        request.getHeader('test-header')
 		    );
 
-		    return RQ_NOTIFICATION_FINISH_REQUEST;
+		    return FINISH;
 		});
 		)");
 
@@ -250,7 +273,7 @@ public:
 		        'test-value'
 		    );
 			response.clearHeaders();
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -276,7 +299,7 @@ public:
 		        'test-value'
 		    );
 			response.write('' + response.getHeader('x-test-header'), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -298,7 +321,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.redirect("header value", true, true);
-			return RQ_NOTIFICATION_CONTINUE;
+			return CONTINUE;
 		});
 		)");
 
