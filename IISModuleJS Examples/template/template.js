@@ -7,7 +7,7 @@
  */
 function callback(response, request)
 {
-    return RQ_NOTIFICATION_CONTINUE;
+    return CONTINUE;
 }    
   
 // Registers the callback function.

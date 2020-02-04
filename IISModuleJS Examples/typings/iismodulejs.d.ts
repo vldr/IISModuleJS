@@ -8,6 +8,13 @@ interface IISRequest {
     read(rewrite?: boolean): void
 
     /**
+     * Set a new URL for the request. Can be used to rewrite urls but is not recommended.
+     * @param url The new url to set.
+     * @param resetQueryString Whether to remove preexisting query strings from the request.
+     */
+    setUrl(url: String, resetQueryString?: boolean): void
+
+    /**
      * Sets or appends the value of a specified HTTP request header.
      * @param headerName Defines the name of the header, example: "Content-Type." 
      * @param headerValue Sets the value of the header, example: "text/html."
@@ -76,7 +83,7 @@ interface IISResponse {
      * @param contentEncoding Sets the Content-Encoding header so you can 
      * provide compressed data through a response.
      */
-    write(body: string | Uint8Array, mimeType: string, contentEncoding?: string): void
+    write(body: string | Uint8Array, mimeType?: string, contentEncoding?: string): void
 
     /**
      * Sets or appends the value of a specified HTTP request header.
@@ -115,6 +122,11 @@ interface IISResponse {
     closeConnection(): void
 
     /**
+     * Disables response buffering for the current request.
+     */
+    disableBuffering(): void
+
+    /**
      * Resets the socket connection immediately.
      */
     resetConnection(): void
@@ -134,6 +146,13 @@ interface IISResponse {
      * Retrieves the HTTP status for the response.
      */
     getStatus(): number
+
+    /**
+     * Sets the HTTP status for the response.
+     * @param statusCode The status code to set, ex: 200
+     * @param statusMessage The status message to set, ex: "OK"
+     */
+    setStatus(statusCode: Number, statusMessage: String): void
 
     /**
      * Redirects the client to a specified URL.
@@ -157,30 +176,25 @@ interface IISResponse {
     disableKernelCache(reason: number): void
 }
 
+interface FetchRequestInit {
+    body?: string,
+    method?: number,
+    is_ssl?: boolean,
+    headers?: string[][]
+}
+
+interface FetchResponse {
+    status(): number
+    text(): string | null
+    blob(): Uint8Array | null
+}
+
 interface HTTP {
-    /**
-     * This function only supports **POST** and **GET** methods and should **not** be mistaken
-     * for the [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) found in the standard web api.
-     * 
-     * @param hostname Specifies the domain name of the server.
-     * @param path Specifies the path part of the HTTP request.
-     * @param isSSL Specifies whether the endpoint is a secure endpoint using TLS.
-     * @param method Specifies the method part of the HTTP request, only, **GET** and **POST**.
-     * @param params Should be an Object (not an Array) which 
-     * will represent the collection of key-value POST parameters 
-     * (imagine an HTML form) for the HTTP POST request.
-     */
     fetch(
         hostname: string, 
         path: string, 
-        isSSL: boolean, 
-        method?: string, 
-        params?: Object
-    ): 
-    Promise<{
-        readonly body: string;
-        readonly status: number;
-    }>
+        init?: FetchRequestInit
+    ): Promise<FetchResponse>
 }
 
 /**
@@ -205,13 +219,6 @@ interface IPC {
 }
 
 /**
- * Callback for adding two numbers.
- *
- * @callback addStuffCallback
- * @param {int} sum - An integer.
- */
-
-/**
  * Registers a given function as a callback which will be called for every request.
  * 
  * The callback function can also be asynchronous but keep in mind that this will yield far worse performance 
@@ -219,8 +226,10 @@ interface IPC {
  * @param {addStuffCallback} callback A callback function which will be provided a ``Response`` object, and a ``Request`` object respectively.
  */
 declare function register(
-    callback: (response: IISResponse, request: IISRequest) => number | Promise<number>
+    type: number,
+    callback?: (response: IISResponse, request: IISRequest, flag: number) => number | Promise<number>
 ): void;
+
 
 /**
  * The interprocess communication interface provides a key-value 
@@ -245,39 +254,17 @@ declare function load(...fileName: string[]): void;
  */
 declare function print(...msg: string[]): void;
 
+/////////////////////////////////////////////////////
+
 /**
  * Indicates that IIS should continue processing additional request-level notifications.
  */
-declare const RQ_NOTIFICATION_CONTINUE = 0;
-
-/**
- * ## DO NOT USE, FOR INTERNAL USE ONLY
- * Indicates that an asynchronous notification is pending and returns request-level processing to IIS. 
- */
-declare const RQ_NOTIFICATION_PENDING = 1; 
+declare const CONTINUE = 0;
 
 /**
  * Indicates that IIS has finished processing request-level notifications and
  * should not process any additional request-level notifications.
  */
-declare const RQ_NOTIFICATION_FINISH_REQUEST = 2;
+declare const FINISH = 1;
 
-/**
- * Disconnects the network connection immediately after the response is sent.
- */
-declare const HTTP_SEND_RESPONSE_FLAG_DISCONNECT = 0x00000001;
-
-/**
- * Sends additional data in the response.
- */
-declare const HTTP_SEND_RESPONSE_FLAG_MORE_DATA = 0x00000002;
-
-/**
- * Buffers the response before it is sent.
- */
-declare const HTTP_SEND_RESPONSE_FLAG_BUFFER_DATA = 0x00000004;
-
-/**
- * Enables the Nagle algorithm to optimize TCP response packets.
- */
-declare const HTTP_SEND_RESPONSE_FLAG_ENABLE_NAGLING = 0x00000008;
+/////////////////////////////////////////////////////
