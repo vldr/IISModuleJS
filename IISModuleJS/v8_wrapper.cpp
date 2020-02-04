@@ -643,72 +643,56 @@ namespace v8_wrapper
 
 		// ipc.set(key: String, value: any): void
 		ipc_module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			// Check if atleast one argument was provided.
-			if (args.Length() < 2) throw std::exception("invalid function signature for ipc.set");
-
-			// Check if our first parameter is a string.
-			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.set");
+			if (args.Length() < 2) 
+				throw std::exception("invalid function signature for ipc.set");
+			
+			if (!args[0]->IsString()) 
+				throw std::exception("invalid first parameter, must be a string for ipc.set");
 
 			/////////////////////////////////////////////
 
-			// Stringify our second object.
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 			 
 			/////////////////////////////////////////////
 
-			// Setup our serializer delegate to handle all our data.
 			SerializerDelegate serializer_delegate(args.GetIsolate());
-
-			// Setup our value serializer that will actually perform the serialization.
 			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
-
-			// Write our value.
+			
 			auto result = serializer.WriteValue(
 				args.GetIsolate()->GetCurrentContext(),
 				args[1]
 			).FromMaybe(false);
 
-			// Check if we were able to successfully write our value to the serializer.
 			if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
 
-			// Release the buffer.
+			/////////////////////////////////////////////
+			
 			std::pair<uint8_t*, size_t> buffer = serializer.Release();
-
-			// Place the value in the key-value store.
+			
 			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
 			
-			// Free the buffer after we've placed it into our key-value store.
 			serializer_delegate.FreeBufferMemory(buffer.first);
 		});
 
 		// ipc.get(key: String): any || null
 		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			// Need this to return our custom object.
 			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate()); 
 			
-			// Check if atleast one argument was provided.
 			if (args.Length() < 1) throw std::exception("invalid function signature for ipc.get");
-
-			// Check if our first parameter is a string.
 			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.get");
 
-			// Attempt to get our key. 
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
 			/////////////////////////////////////////////
 
-			// Length of the buffer to create..
 			simdb::u32 len = 0;
 
-			// Get the length of the object.
 			db.len(key, &len);
 
-			// Check if our length is not zero.
 			if (!len) RETURN_NULL
 
 			/////////////////////////////////////////////
 
-			// Allocate our buffer...
 			auto buffer = std::make_unique<uint8_t[]>(len);
 
 			if (!buffer)
@@ -716,22 +700,17 @@ namespace v8_wrapper
 				throw std::exception("unable to allocate for ipc.get");
 			}
 
-			// Attempt to get our key.
 			auto result = db.get(
 				key.c_str(),
 				buffer.get(),
 				len
 			);
-
-			// Check if our result was successful.
+			
 			if (!result) RETURN_NULL
 			
 			/////////////////////////////////////////////
 
-			// Setup our deserializer delegate.
 			DeserializerDelegate deserializer_delegate(args.GetIsolate());
-
-			// Setup our value deserializer.
 			v8::ValueDeserializer deserializer(
 				args.GetIsolate(), 
 				buffer.get(),
@@ -739,13 +718,12 @@ namespace v8_wrapper
 				&deserializer_delegate
 			);
 
-			// Attempt to read the value from the deserializer.
 			auto value = deserializer.ReadValue(args.GetIsolate()->GetCurrentContext());
 
-			// Check if our value isn't empty, throw an exception otherwise.
 			if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
 
-			// Return our value using an escapable handle.
+			/////////////////////////////////////////////
+			
 			args.GetReturnValue().Set(
 				escapable_handle_scope.Escape(
 					value.ToLocalChecked()
@@ -962,6 +940,30 @@ namespace v8_wrapper
 				// Return our result. 
 				return status_code; 
 			});
+
+			// setStatus(statusCode: Number, statusMessage: String): void
+			module.set("setStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setStatus");
+
+				////////////////////////////////
+				
+				if (args.Length() < 2) throw std::exception("invalid signature for setStatus");
+
+				////////////////////////////////
+
+				auto status_code = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+				auto status_message
+					= v8pp::from_v8<const char*>(args.GetIsolate(), args[1]);
+				
+				////////////////////////////////
+
+				auto hr = HTTP_RESPONSE->SetStatus(status_code, status_message);
+
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to setStatus");
+			}); 
+			
 
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): void
 			module.set("redirect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
