@@ -6,9 +6,15 @@ namespace v8_wrapper
 	namespace fs = std::experimental::filesystem;
 
 	// All the global objects and functions for v8.
+	v8::Global<v8::Object> global_fetch_object;
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
+
+	/////////////////////////////////////////////////
+
+	v8::Global<v8::Function> function_pre_begin_request;
 	v8::Global<v8::Function> function_begin_request;
+	v8::Global<v8::Function> function_send_response;
 
 	// A persistent context for v8.
 	v8::Persistent<v8::Context> context;
@@ -19,6 +25,14 @@ namespace v8_wrapper
 	// The name of the default script to be launched. 
 	std::wstring script_name;
 
+	// Cache containing all our Eternal names.
+	std::unordered_map<
+		const void*,
+		std::vector<
+			v8::Eternal<v8::Name>
+		>
+	> eternal_name_cache_;
+
 	// Simdb database use for ipc.get and ipc.set
 	simdb db;
 
@@ -26,18 +40,19 @@ namespace v8_wrapper
 	 * The method that initializes everything necessary.
 	 */
 	void start(std::wstring app_pool_name)
-	{ 
+	{
 		// Setup our engine thread.
 		std::thread engine_thread([app_pool_name] {	
-			// Setup our db.
 			db = simdb("IISModule", 1024, 4096);
 			db.flush();
 
-			// Set our app pool name up.
+			///////////////////////////
+			
 			script_name = app_pool_name;
 			script_name.append(L".js");
+
+			///////////////////////////
 			 
-			// Initialize...
 			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
 			
 			v8::V8::InitializePlatform(platform.get());
@@ -48,17 +63,17 @@ namespace v8_wrapper
 #else
 			v8::V8::SetFlagsFromString("--always-opt"); 
 #endif
-			// Setup create params...
-			v8::Isolate::CreateParams create_params;
+			///////////////////////////
 
+			v8::Isolate::CreateParams create_params;
 			create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
-			// Setup our isolate...
+			///////////////////////////
+
 			isolate = v8::Isolate::New(create_params);
 
 			//////////////////////////////////////////
 
-			// Load our script and watch them.
 			load_and_watch();
 		});
 		engine_thread.detach();
@@ -75,7 +90,10 @@ namespace v8_wrapper
 
 		global_http_response_object.Reset();
 		global_http_request_object.Reset();
+		
 		function_begin_request.Reset();
+		function_send_response.Reset();
+		function_pre_begin_request.Reset();
 
 		// Reset our context...
 		context.Reset(isolate, create_shell_context());
@@ -129,8 +147,38 @@ namespace v8_wrapper
 	}
 
 	/**
+	 * Returns a preexisting or creates a new eternal instance.
+	 */
+	const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
+		const void* lookup_key, 
+		const char* const names[],
+		size_t count)
+	{
+		auto it = eternal_name_cache_.find(lookup_key);
+		const std::vector<v8::Eternal<v8::Name>>* vector = nullptr;
+
+		if (it == eternal_name_cache_.end()) 
+		{
+			std::vector<v8::Eternal<v8::Name>> new_vector(count);
+			std::transform(
+				names, names + count, new_vector.begin(), [](const char* name) {
+					return v8::Eternal<v8::Name>(isolate, v8pp::to_v8(isolate, name));
+				});
+
+			eternal_name_cache_[lookup_key] = std::move(new_vector);
+			vector = &eternal_name_cache_[lookup_key];
+		}
+		else 
+		{
+			vector = &it->second;
+		}
+		
+		return vector->data();
+	}
+
+	/**
 	 * Loads an initial script file 
-	 * and watches for changes every second.
+	 * and watches for changes every second. 
 	 */
 	void load_and_watch()
 	{ 
@@ -142,6 +190,8 @@ namespace v8_wrapper
 
 		// Bind our execute function to actually execute our scripts.
 		rpc_server.bind("execute", [](std::string script) {
+			reset_engine();
+			
 			return execute_string((char*)script.c_str(), true, true);
 		});
 
@@ -236,14 +286,60 @@ namespace v8_wrapper
 			}
 		});
 
-		// register(callback: (Function(Response, Request): REQUEST_NOTIFICATION_STATUS)): void
+		// [SIGNATURE 1]
+		// register(
+		//     type: CALLBACK_TYPES (Number),
+		//     callback: (Function(Response, Request): number)
+		// ): void
+		//
+		// [SIGNATURE 2]
+		// register(
+		//     callback: (Function(Response, Request): number)
+		// ): void
 		global.set("register", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			if (args.Length() < 1) throw std::exception("invalid function signature");
-			if (!args[0]->IsFunction()) throw std::exception("invalid first parameter, must be a function");
+			if (args.Length() < 1) throw std::exception("invalid function signature for register");
 
-			function_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(args[0]));
+			////////////////////////////////////////////////
+
+			// Backwards compatibility for the older variant of the
+			// register function. Assumes that you want a BEGIN_REQUEST
+			// callback.
+			if (args.Length() == 1 && args[0]->IsFunction())
+			{
+				function_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(args[0]));
+
+				return;
+			}
+
+			////////////////////////////////////////////////
+			
+			if (!args[0]->IsNumber() || !args[1]->IsFunction()) 
+				throw std::exception("invalid function signature 2 for register");
+
+			////////////////////////////////////////////////
+
+			auto type = CALLBACK_TYPES(
+				v8pp::from_v8<int>(isolate, args[0])
+			);
+
+			////////////////////////////////////////////////
+			
+			switch (type) 
+			{
+			case BEGIN_REQUEST:
+				function_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(args[1]));
+				break;
+			case SEND_RESPONSE:
+				function_send_response.Reset(isolate, v8::Local<v8::Function>::Cast(args[1]));
+				break;
+			case PRE_BEGIN_REQUEST:
+				function_pre_begin_request.Reset(isolate, v8::Local<v8::Function>::Cast(args[1]));
+				break;
+			default:
+				throw std::exception("invalid callback type for register");
+			}
 		});
-
+		
 		////////////////////////////////////////
 
 		// http Property
@@ -252,42 +348,145 @@ namespace v8_wrapper
 		// http.fetch(
 		//	   hostname: String,
 		//	   path: String, 
-		//	   isSSL: bool,
-		//	   method: String {optional, GET}, 
-		//     params: Object<String, String> {optional}
+		//	   init: Object {optional},
 		// ): Promise
 		http_module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			// Check argument length.
-			if (args.Length() < 3) throw std::exception("invalid function signature for http.fetch");
+			if (args.Length() < 2) 
+				throw std::exception("invalid function signature for http.fetch");
 
-			// Arguments pertaining to fetch.
-			auto hostname = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-			auto path = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
-			auto is_ssl = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
-			auto method = v8pp::from_v8<std::string>(args.GetIsolate(), args[3], "GET");
+			///////////////////////////////////////////////
+			
+			if (!args[0]->IsString() || !args[1]->IsString()) 
+				throw std::exception("invalid argument types for http.fetch");
 
-			// Setup our params if we we're given them.
-			httplib::Params params; 
+			///////////////////////////////////////////////
 
-			// Check if we were given our fifth argument.
-			if (args.Length() >= 5 && args[4]->IsObject())
+			// Require Parameters
+			
+			auto hostname = v8pp::from_v8<std::string>(isolate, args[0]);
+			auto path = v8pp::from_v8<std::string>(isolate, args[1]);
+
+			///////////////////////////////////////////////
+
+			FetchRequest fetch_request(hostname, path);
+
+			///////////////////////////////////////////////
+			
+			if (args.Length() > 2 && args[2]->IsObject())
 			{
-				auto context = args.GetIsolate()->GetCurrentContext();
-				auto object = args[4].As<v8::Object>();
-				auto prop_names = object->GetPropertyNames(context).ToLocalChecked();
+				auto object = args[2].As<v8::Object>();
+				
+				////////////////////////////////////
 
-				for (uint32_t i = 0, count = prop_names->Length(); i < count; ++i)
+				static const char* const kKeys[] = 
 				{
-					v8::Local<v8::Value> key = prop_names->Get(context, i).ToLocalChecked();
-					v8::Local<v8::Value> val = object->Get(context, key).ToLocalChecked();
+					"body",
+					"method",
+					"is_ssl",
+					"headers"
+				};
 
-					params.emplace(
-						v8pp::from_v8<std::string>(isolate, key), 
-						v8pp::from_v8<std::string>(isolate, val)
-					);
+				auto keys = find_or_create_eternal_name_cache(
+					kKeys, 
+					kKeys, 
+					std::size(kKeys)
+				);
+
+				////////////////////////////////////
+				
+				auto context = isolate->GetCurrentContext();
+				
+				////////////////////////////////////
+				
+				// "body" property //
+
+				{
+					v8::Local<v8::Value> value;
+
+					if (!object->Get(context, keys[0].Get(isolate)).ToLocal(&value))
+					{
+						throw std::exception("unable to get value.");
+					}
+
+					if (value->IsString())
+					{
+						fetch_request.body = v8pp::from_v8<std::string>(isolate, value);
+					}
 				}
-			}
 
+				////////////////////////////////////
+
+				// "method" property //
+
+				{
+					v8::Local<v8::Value> value;
+
+					if (!object->Get(context, keys[1].Get(isolate)).ToLocal(&value))
+					{
+						throw std::exception("unable to get value.");
+					}
+
+					if (value->IsString())
+					{
+						fetch_request.method = v8pp::from_v8<std::string>(isolate, value);
+					}
+				}
+
+				////////////////////////////////////
+
+				// "is_ssl" property //
+
+				{
+					v8::Local<v8::Value> value;
+
+					if (!object->Get(context, keys[2].Get(isolate)).ToLocal(&value))
+					{
+						throw std::exception("unable to get value.");
+					}
+
+					if (value->IsBoolean())
+					{
+						fetch_request.is_ssl = v8pp::from_v8<bool>(isolate, value);
+					}
+				}
+
+				////////////////////////////////////
+
+				// "headers" property //
+
+				{
+					v8::Local<v8::Value> value;
+
+					if (!object->Get(context, keys[3].Get(isolate)).ToLocal(&value))
+					{
+						throw std::exception("unable to get value.");
+					}
+
+					if (value->IsObject())
+					{
+						auto object_value = value.As<v8::Object>();
+					
+						if (!object_value.IsEmpty())
+						{
+							auto prop_names = object_value->GetPropertyNames(context).ToLocalChecked();
+							
+							for (uint32_t i = 0, count = prop_names->Length(); i < count; ++i)
+							{
+								v8::Local<v8::Value> key = prop_names->Get(context, i).ToLocalChecked();
+								v8::Local<v8::Value> val = object_value->Get(context, key).ToLocalChecked();
+
+								fetch_request.headers.emplace(
+									v8pp::from_v8<std::string>(isolate, key),
+									v8pp::from_v8<std::string>(isolate, val)
+								);
+							}
+						}
+					}
+				}
+			} 
+
+			////////////////////////////////////
+			
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(args.GetIsolate()->GetCurrentContext()).ToLocalChecked();
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(args.GetIsolate(), resolver);
@@ -300,36 +499,93 @@ namespace v8_wrapper
 			// Our request thread.
 			std::thread request_thread([
 				resolver = std::move(resolver_global), 
-				hostname, 
-				path,
-				is_ssl,
-				method,
-				params
+				fetch_request = std::move(fetch_request)
 			] {
-				std::shared_ptr<httplib::Response> response;
+				std::unique_ptr<httplib::Response> response;
 				 
-				// Use httplib::SSLClient if our endpoint is secure socket.
-				if (is_ssl)
+				if (fetch_request.is_ssl)
 				{
-					httplib::SSLClient client(hostname);
+					httplib::SSLClient client(fetch_request.hostname);
 					client.enable_server_certificate_verification(false);
 
-					if (method == "GET") response = client.Get(path.c_str());
-					else if (method == "POST") response = client.Post(path.c_str(), params);
+					if (fetch_request.method == "GET")
+					{
+						response = client.Get(fetch_request.path.c_str(), fetch_request.headers);
+					}
+
+					if (fetch_request.method == "POST")
+					{
+						response = client.Post(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body);
+					}
+
+					if (fetch_request.method == "HEAD")
+					{
+						response = client.Head(fetch_request.path.c_str(), fetch_request.headers);
+					}
+
+					if (fetch_request.method == "PUT")
+					{
+						response = client.Put(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body);
+					}
+					
+					if (fetch_request.method == "DELETE")
+					{
+						response = client.Delete(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body);
+					}
+
+					if (fetch_request.method == "OPTIONS")
+					{
+						response = client.Options(fetch_request.path.c_str(), fetch_request.headers);
+					}
+
+					if (fetch_request.method == "PATCH")
+					{
+						response = client.Patch(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body, nullptr);
+					}
 				}
-				// Otherwise, use httplib::Client.
 				else
 				{
-					httplib::Client client(hostname);
+					httplib::Client client(fetch_request.hostname);	
 
-					if (method == "GET") response = client.Get(path.c_str());
-					else if (method == "POST") response = client.Post(path.c_str(), params);
+					if (fetch_request.method == "GET")
+					{
+						response = client.Get(fetch_request.path.c_str(), fetch_request.headers);
+					}
+
+					if (fetch_request.method == "POST")
+					{
+						response = client.Post(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body);
+					}
+
+					if (fetch_request.method == "HEAD")
+					{
+						response = client.Head(fetch_request.path.c_str(), fetch_request.headers);
+					}
+
+					if (fetch_request.method == "PUT")
+					{
+						response = client.Put(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body);
+					}
+
+					if (fetch_request.method == "DELETE")
+					{
+						response = client.Delete(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body);
+					}
+
+					if (fetch_request.method == "OPTIONS")
+					{
+						response = client.Options(fetch_request.path.c_str(), fetch_request.headers);
+					}
+
+					if (fetch_request.method == "PATCH")
+					{
+						response = client.Patch(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body, nullptr);
+					}
 				}
 
 				//////////////////////////////////////////
 				
-				// We should only lock once all of
-				// the thread-blocking functions have finished.
+				// We should only lock once the request has finished.
 				v8::Locker locker(isolate);
 				v8::Isolate::Scope isolate_scope(isolate);
 				v8::HandleScope handle_scope(isolate);
@@ -343,18 +599,37 @@ namespace v8_wrapper
 						v8pp::to_v8(isolate, "unable to fetch")
 					);
 					 
-					return; 
+					return;  
 				}
 
-				// Create a response module.
-				v8pp::module response_module(isolate);
-				response_module.set_const("body", response->body);
-				response_module.set_const("status", response->status);
+				//////////////////////////////////
 
-				// Resolve our request.
+				auto fetch_object = global_fetch_object.Get(isolate)->Clone();
+
+				//////////////////////////////////
+
+				auto fetch_response = new FetchResponse(isolate, fetch_object, response.release());
+
+				//////////////////////////////////
+				
+				fetch_response->response_object.SetWeak(
+					fetch_response,
+					[](const v8::WeakCallbackInfo<FetchResponse>& data)
+					{
+						data.GetParameter()->response_object.Reset();
+
+						///////////////////////////////
+
+						delete data.GetParameter();
+					},
+					v8::WeakCallbackType::kParameter
+				);
+
+				//////////////////////////////////
+
 				resolver.Get(isolate)->Resolve(
 					isolate->GetCurrentContext(), 
-					response_module.new_instance()
+					fetch_object
 				);
 			});
 
@@ -368,72 +643,56 @@ namespace v8_wrapper
 
 		// ipc.set(key: String, value: any): void
 		ipc_module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			// Check if atleast one argument was provided.
-			if (args.Length() < 2) throw std::exception("invalid function signature for ipc.set");
-
-			// Check if our first parameter is a string.
-			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.set");
+			if (args.Length() < 2) 
+				throw std::exception("invalid function signature for ipc.set");
+			
+			if (!args[0]->IsString()) 
+				throw std::exception("invalid first parameter, must be a string for ipc.set");
 
 			/////////////////////////////////////////////
 
-			// Stringify our second object.
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 			 
 			/////////////////////////////////////////////
 
-			// Setup our serializer delegate to handle all our data.
 			SerializerDelegate serializer_delegate(args.GetIsolate());
-
-			// Setup our value serializer that will actually perform the serialization.
 			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
-
-			// Write our value.
+			
 			auto result = serializer.WriteValue(
 				args.GetIsolate()->GetCurrentContext(),
 				args[1]
 			).FromMaybe(false);
 
-			// Check if we were able to successfully write our value to the serializer.
 			if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
 
-			// Release the buffer.
+			/////////////////////////////////////////////
+			
 			std::pair<uint8_t*, size_t> buffer = serializer.Release();
-
-			// Place the value in the key-value store.
+			
 			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
 			
-			// Free the buffer after we've placed it into our key-value store.
 			serializer_delegate.FreeBufferMemory(buffer.first);
 		});
 
 		// ipc.get(key: String): any || null
 		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			// Need this to return our custom object.
 			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate()); 
 			
-			// Check if atleast one argument was provided.
 			if (args.Length() < 1) throw std::exception("invalid function signature for ipc.get");
-
-			// Check if our first parameter is a string.
 			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.get");
 
-			// Attempt to get our key. 
 			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
 			/////////////////////////////////////////////
 
-			// Length of the buffer to create..
 			simdb::u32 len = 0;
 
-			// Get the length of the object.
 			db.len(key, &len);
 
-			// Check if our length is not zero.
 			if (!len) RETURN_NULL
 
 			/////////////////////////////////////////////
 
-			// Allocate our buffer...
 			auto buffer = std::make_unique<uint8_t[]>(len);
 
 			if (!buffer)
@@ -441,22 +700,17 @@ namespace v8_wrapper
 				throw std::exception("unable to allocate for ipc.get");
 			}
 
-			// Attempt to get our key.
 			auto result = db.get(
 				key.c_str(),
 				buffer.get(),
 				len
 			);
-
-			// Check if our result was successful.
+			
 			if (!result) RETURN_NULL
 			
 			/////////////////////////////////////////////
 
-			// Setup our deserializer delegate.
 			DeserializerDelegate deserializer_delegate(args.GetIsolate());
-
-			// Setup our value deserializer.
 			v8::ValueDeserializer deserializer(
 				args.GetIsolate(), 
 				buffer.get(),
@@ -464,13 +718,12 @@ namespace v8_wrapper
 				&deserializer_delegate
 			);
 
-			// Attempt to read the value from the deserializer.
 			auto value = deserializer.ReadValue(args.GetIsolate()->GetCurrentContext());
 
-			// Check if our value isn't empty, throw an exception otherwise.
 			if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
 
-			// Return our value using an escapable handle.
+			/////////////////////////////////////////////
+			
 			args.GetReturnValue().Set(
 				escapable_handle_scope.Escape(
 					value.ToLocalChecked()
@@ -492,8 +745,7 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Initializes two global objects named http_response and http_request.
-	 * They are the wrappers for IHttpRequest and IHttpResponse.
+	 * Initializes global objects.
 	 */
 	void initialize_objects()
 	{
@@ -502,6 +754,119 @@ namespace v8_wrapper
 		v8::HandleScope handle_scope(isolate);
 		v8::Context::Scope context_scope(context.Get(isolate));
 
+		/////////////////////////////
+		// FetchResponse JS Object //
+		/////////////////////////////
+		if (global_fetch_object.IsEmpty())
+		{
+			// Setup our module...
+			v8pp::module module(isolate);
+
+			// Setup our functions
+
+			// status(): number
+			module.set("status", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for status");
+
+				RETURN_THIS(FETCH_RESPONSE->status)
+			});
+
+			// text(): String || null
+			module.set("text", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for text");
+
+				auto body = FETCH_RESPONSE->body;
+
+				////////////////////////////////////////////////
+
+				if (body.empty()) RETURN_NULL;
+
+				////////////////////////////////////////////////
+				
+				RETURN_THIS(FETCH_RESPONSE->body)
+			});
+
+			// blob(): Uint8Array || null
+			module.set("blob", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for blob");
+
+				////////////////////////////////////////////////
+
+				auto body = FETCH_RESPONSE->body;
+
+				////////////////////////////////////////////////
+				
+				if (body.empty()) RETURN_NULL;
+				
+				////////////////////////////////////////////////
+				
+				auto array_buffer = v8::ArrayBuffer::New(
+					isolate,
+					body.size()
+				);
+
+				////////////////////////////////////////////////
+				
+				std::memcpy(
+					array_buffer->GetContents().Data(),
+					body.data(),
+					body.size()
+				);
+
+				////////////////////////////////////////////////
+
+				auto uint8_array = v8::Uint8Array::New(
+					array_buffer,
+					0,
+					body.size()
+				);
+
+				////////////////////////////////////////////////
+				
+				args.GetReturnValue().Set(uint8_array);
+			});
+
+			// headers(): Object<String, String> || null
+			module.set("headers", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for headers");
+
+				////////////////////////////////////////////////
+
+				auto headers = FETCH_RESPONSE->headers;
+
+				////////////////////////////////////////////////
+				
+				if (headers.empty()) RETURN_NULL;
+				
+				////////////////////////////////////////////////
+				
+				auto headers_object = v8::Object::New(isolate);
+
+				////////////////////////////////////////////////
+				
+				for (auto header : headers)
+				{
+					headers_object->Set(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, header.first),
+						v8pp::to_v8(isolate, header.second)
+					);
+				}
+				
+				////////////////////////////////////////////////
+				
+				args.GetReturnValue().Set(
+					headers_object
+				);
+			});
+
+			// Set our internal field count.
+			module.obj_->SetInternalFieldCount(1);
+
+			// Reset our pointer...
+			global_fetch_object.Reset(isolate, module.new_instance());
+		}
+		
 		////////////////////////////
 		// HttpResponse JS Object //
 		////////////////////////////
@@ -511,7 +876,7 @@ namespace v8_wrapper
 			v8pp::module module(isolate);
 
 			// Setup our functions
-
+			
 			// clear(): void
 			module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for clear");
@@ -531,9 +896,15 @@ namespace v8_wrapper
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for closeConnection");
 					
 				HTTP_RESPONSE->CloseConnection();
-				
 			});
 
+			// disableBuffering(): void
+			module.set("disableBuffering", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableBuffering");
+
+				HTTP_RESPONSE->DisableBuffering();
+			});		
+			
 			// setNeedDisconnect(): void
 			module.set("setNeedDisconnect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setNeedDisconnect");
@@ -552,9 +923,9 @@ namespace v8_wrapper
 			module.set("resetConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for resetConnection");
 					
-				HTTP_RESPONSE->ResetConnection();
+				HTTP_RESPONSE->ResetConnection(); 
 			});
-				
+							
 			// getStatus(): Number
 			module.set("getStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
@@ -570,6 +941,30 @@ namespace v8_wrapper
 				return status_code; 
 			});
 
+			// setStatus(statusCode: Number, statusMessage: String): void
+			module.set("setStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setStatus");
+
+				////////////////////////////////
+				
+				if (args.Length() < 2) throw std::exception("invalid signature for setStatus");
+
+				////////////////////////////////
+
+				auto status_code = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+				auto status_message
+					= v8pp::from_v8<const char*>(args.GetIsolate(), args[1]);
+				
+				////////////////////////////////
+
+				auto hr = HTTP_RESPONSE->SetStatus(status_code, status_message);
+
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to setStatus");
+			}); 
+			
+
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): void
 			module.set("redirect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for redirect");
@@ -581,7 +976,7 @@ namespace v8_wrapper
 				////////////////////////////////
 
 				auto url = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
+				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]); 
 				auto include_parameters = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
 				
 				////////////////////////////////
@@ -704,14 +1099,144 @@ namespace v8_wrapper
 
 				args.GetReturnValue().Set(string);
 			}); 
-	
-			// write(body: String || Uint8Array, mimetype: String, contentEncoding: String {optional}): void
+
+			// read(asArray: bool {optional}): String || Uint8Array || null
+			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for read");
+
+				////////////////////////////////////////////////
+
+				auto chunk_count = HTTP_RESPONSE->GetRawHttpResponse()->EntityChunkCount;
+
+				////////////////////////////////////////////////
+
+				if (!chunk_count) RETURN_NULL
+
+				////////////////////////////////////////////////
+
+				size_t total_size = 0;
+				
+				for (unsigned int i = 0; i < chunk_count; i++)
+				{
+					auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
+
+					////////////////////////////////////////////////
+
+					if (chunk.DataChunkType != HttpDataChunkFromMemory) continue;
+
+					////////////////////////////////////////////////
+
+					total_size += chunk.FromMemory.BufferLength;
+				}
+
+				if (!total_size) RETURN_NULL
+
+				////////////////////////////////////////////////			
+
+				bool asArray = v8pp::from_v8<bool>(isolate, args[0], false);
+
+				////////////////////////////////////////////////
+
+				if (asArray)
+				{
+					auto array_buffer = v8::ArrayBuffer::New(
+						isolate,
+						total_size
+					);
+
+					////////////////////////////////////////////////
+
+					size_t offset = 0;
+					
+					for (unsigned int i = 0; i < chunk_count; i++)
+					{
+						auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
+
+						////////////////////////////////////////////////
+
+						if (chunk.DataChunkType != HttpDataChunkFromMemory) continue;
+						if (!chunk.FromMemory.BufferLength) continue;
+
+						////////////////////////////////////////////////
+
+						std::memcpy(
+							(uint8_t*)array_buffer->GetContents().Data() + offset,
+							chunk.FromMemory.pBuffer,
+							chunk.FromMemory.BufferLength
+						);
+
+						////////////////////////////////////////////////
+						
+						offset += chunk.FromMemory.BufferLength;
+					}	
+
+					////////////////////////////////////////////////
+
+					auto uint8_array = v8::Uint8Array::New(
+						array_buffer,
+						0,
+						total_size
+					);
+
+					////////////////////////////////////////////////
+
+					args.GetReturnValue().Set(
+						uint8_array
+					);
+				}
+				else
+				{
+					auto external_string = new ExternalString(total_size);
+
+					////////////////////////////////////////////////
+
+					size_t offset = 0;
+					
+					for (unsigned int i = 0; i < chunk_count; i++)
+					{
+						auto chunk = HTTP_RESPONSE->GetRawHttpResponse()->pEntityChunks[i];
+
+						////////////////////////////////////////////////
+
+						if (chunk.DataChunkType != HttpDataChunkFromMemory) continue;
+						if (!chunk.FromMemory.BufferLength) continue;
+
+						////////////////////////////////////////////////
+
+						std::memcpy(
+							(uint8_t*)external_string->data() + offset,
+							chunk.FromMemory.pBuffer,
+							chunk.FromMemory.BufferLength
+						);
+
+						////////////////////////////////////////////////
+
+						offset += chunk.FromMemory.BufferLength;
+					}
+
+					////////////////////////////////////////////////
+
+					auto string = v8::String::NewExternalOneByte(isolate, external_string);
+
+					////////////////////////////////////////////////
+
+					if (string.IsEmpty()) throw std::exception("failed to obtain string");
+					
+					////////////////////////////////////////////////
+
+					args.GetReturnValue().Set(
+						string.ToLocalChecked()
+					);
+				}
+				});
+			
+			// write(body: String || Uint8Array, mimetype: String {optional}, contentEncoding: String {optional}): void
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
 
 				// Check arguments.
-				if (args.Length() < 2 || !args[1]->IsString()) throw std::exception("invalid signature for write");
+				if (args.Length() < 1) throw std::exception("invalid signature for write");
 
 				////////////////////////////////////////////////
 
@@ -739,23 +1264,29 @@ namespace v8_wrapper
 					buffer = array_buffer;
 					buffer_size = array_buffer;
 				}
-				else throw std::exception("invalid first argument type for write");
+				else 
+					throw std::exception("invalid first argument type for write");
 
 				////////////////////////////////////////////////
 
-				// Get our mimetype.
-				v8::String::Utf8Value mime_type(isolate, args[1]);
+				if (args.Length() >= 2 && args[1]->IsString())
+				{
+					// Get our mimetype.
+					v8::String::Utf8Value mime_type(isolate, args[1]);
 
-				// Check the length of the mime type.
-				if (!*mime_type) throw std::exception("second argument is invalid for write");
+					// Check the length of the mime type.
+					if (!*mime_type) throw std::exception("second argument is invalid for write");
 
-				// Clear and set our header...
-				HTTP_RESPONSE->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
+					// Clear and set our header...
+					HTTP_RESPONSE->SetHeader(HttpHeaderContentType, *mime_type, mime_type.length(), TRUE);
+				}
+				else
+					HTTP_RESPONSE->SetHeader(HttpHeaderContentType, "text/html", strlen("text/html"), TRUE);
 
 				////////////////////////////////////////////////
 
 				// Check if content encoding parameter was provided.
-				if (args.Length() >= 3) 
+				if (args.Length() >= 3 && args[2]->IsString()) 
 				{
 					// Get our mimetype.
 					v8::String::Utf8Value content_encoding(isolate, args[2]);
@@ -844,9 +1375,9 @@ namespace v8_wrapper
 		{
 			// Setup our module...
 			v8pp::module module(isolate);
-
-			// Setup our functions
 			 
+			// Setup our functions
+			
 			// read(rewrite: bool {optional}): String || null
 			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for read");
@@ -913,6 +1444,10 @@ namespace v8_wrapper
 
 					///////////////////////////////
 					
+					if (!context_buffer)  throw std::exception("invalid allocation pointer for read.");
+
+					///////////////////////////////
+					
 					std::memcpy(context_buffer, bytes.data(), bytes.size());
 
 					///////////////////////////////
@@ -931,6 +1466,31 @@ namespace v8_wrapper
 					string_object
 				);
 			});
+
+			// setUrl(url: String, resetQueryString: bool {optional}): void
+			module.set("setUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for setUrl");
+				////////////////////////////////
+
+				if (args.Length() < 1) throw std::exception("invalid signature for setUrl");
+
+				////////////////////////////////
+				
+				if (!args[0]->IsString()) throw std::exception("first parameter must be a string.");
+
+				////////////////////////////////
+				 
+				auto url = v8pp::from_v8<std::string>(isolate, args[0]);
+				auto resetQueryString = v8pp::from_v8<bool>(isolate, args[1], true);
+
+				////////////////////////////////
+				
+				auto hr = HTTP_REQUEST->SetUrl(url.c_str(), url.length(), resetQueryString);
+
+				////////////////////////////////
+
+				if (FAILED(hr)) throw std::exception("failed to set url");
+			});	
 
 			// deleteHeader(headerName: String): void
 			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -1112,21 +1672,39 @@ namespace v8_wrapper
 			global_http_request_object.Reset(isolate, module.new_instance());
 		}
 	}
-
+	 
 	/**
-	 * Handles the callback for begin request that is registered in JS 
-	 * with "register".
+	 * Handles a callback that is registered in JS.
 	 */
-	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext)
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider)
 	{
-		// Check if our pointers are null...
-		if (!isolate) return RQ_NOTIFICATION_CONTINUE;
-
-		// Check if our function is empty...
-		if (function_begin_request.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
+		if (!isolate) return 0 /* CONTINUE */;
 
 		////////////////////////////////////////////////
 
+		v8::Global<v8::Function> * callback_function = nullptr;
+
+		////////////////////////////////////////////////
+
+		switch (type)
+		{
+		case BEGIN_REQUEST:
+			callback_function = &function_begin_request;
+			break;
+		case SEND_RESPONSE:
+			callback_function = &function_send_response;
+			break;
+		case PRE_BEGIN_REQUEST:
+			callback_function = &function_pre_begin_request;
+			break;
+		}
+
+		////////////////////////////////////////////////
+		
+		if (!callback_function || callback_function->IsEmpty()) return 0 /* CONTINUE */;
+		
+		////////////////////////////////////////////////
+		
 		// Setup our lockers, isolate scope, and handle scope...
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -1139,47 +1717,76 @@ namespace v8_wrapper
 		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
 
-		// Update the pointers in our objects.
+		// Set the internal pointers in the objects.
 		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext);
 		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext);
 
-		// Setup our arguments...
-		v8::Local<v8::Value> argv[2] = { http_response_object, http_request_object };
+		////////////////////////////////////////////////
+		
+		auto local_function = callback_function->Get(isolate);
 
-		// Setup local function...
-		auto local_function = function_begin_request.Get(isolate);
+		// Our argument count.
+		auto argument_count = 2;
+
+		// Our arguments to pass to the callback.
+		v8::Local<v8::Value> arguments[3];
+		arguments[0] = http_response_object;
+		arguments[1] = http_request_object;
 
 		////////////////////////////////////////////////
 
-		// Attempt to get our registered our callback and call it.
+		// We want to add a third flag for our send response callback.
+		if (type == SEND_RESPONSE)
+		{
+			// Update our argument count.
+			argument_count = 3;
+
+			// Set our third argument to be the provider flags.
+			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pProvider)->GetFlags());
+		}
+
+		////////////////////////////////////////////////
+
 		auto result = local_function->Call(
-			isolate->GetCurrentContext(), 
-			v8::Null(isolate), 
-			2, 
-			argv
+			isolate->GetCurrentContext(),
+			v8::Null(isolate),
+			argument_count,
+			arguments
 		);
 
 		// Check if our function returned anything...
-		if (result.IsEmpty()) return RQ_NOTIFICATION_CONTINUE;
+		if (result.IsEmpty()) return 0 /* CONTINUE */;
 
 		////////////////////////////////////////////////
 
 		// Get our result value.
 		auto result_value = result.ToLocalChecked();
 
-		// Check if our result is a promise.
+		////////////////////////////////////////////////
+		
+		if (type == PRE_BEGIN_REQUEST && !result_value->IsNumber())
+		{
+			v8pp::throw_ex(isolate, "The PRE_BEGIN_REQUEST callback must return either CONTINUE or FINISH.");
+
+			////////////////////////////////////////////////
+
+			return 0 /* CONTINUE */;
+		}
+
+		////////////////////////////////////////////////
+
 		if (result_value->IsPromise())
 		{	
 			// Get our promise object.
 			auto promise = result_value.As<v8::Promise>();
 
 			// Check if our promise is already fulfilled or rejected.
-			if (promise->State() == v8::Promise::kFulfilled 
-				|| promise->State() == v8::Promise::kRejected)
+			if (promise->State() == v8::Promise::kFulfilled || promise->State() == v8::Promise::kRejected)
 			{
 				// Cast our value to a request notification...
 				return REQUEST_NOTIFICATION_STATUS(
-					v8pp::from_v8<int>(isolate, promise->Result(), 0)
+					v8pp::from_v8<int>(isolate, promise->Result(), 0) 
+						? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE
 				);
 			}
 
@@ -1189,7 +1796,8 @@ namespace v8_wrapper
 			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& args)
 			{
 				// Set our default notification status.
-				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0);
+				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0)
+					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE;
 
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
@@ -1219,12 +1827,23 @@ namespace v8_wrapper
 			return RQ_NOTIFICATION_PENDING;
 		}
 
-		////////////////////////////////////////////////
+		///////////////////////////////////////////
 
-		// Cast our value to a request notification...
-		return REQUEST_NOTIFICATION_STATUS(
-			v8pp::from_v8<int>(isolate, result_value, 0)
-		);
+		/*
+		 * We need to normalize our return value.
+		 *
+		 * The PRE_BEGIN_REQUEST callback can only return GL_NOTIFICATION_HANDLED or GL_NOTIFICATION_CONTINUE,
+		 * but the other callbacks must return RQ_NOTIFICATION_FINISH_REQUEST or RQ_NOTIFICATION_CONTINUE.
+		 *
+		 * They represent the same action but differ by value.
+		 */
+		auto return_int_value = v8pp::from_v8<int>(isolate, result_value, 0) ? 
+			(type == PRE_BEGIN_REQUEST ? GL_NOTIFICATION_HANDLED : RQ_NOTIFICATION_FINISH_REQUEST)
+			: RQ_NOTIFICATION_CONTINUE;
+
+		///////////////////////////////////////////
+		
+		return return_int_value;
 	}
 
 	/**
@@ -1233,7 +1852,12 @@ namespace v8_wrapper
 	 */
 	std::string sock_to_ip(PSOCKADDR address)
 	{
-		if (!address) throw std::exception("invalid address for sock_to_ip");
+		if (!address)
+		{
+			v8pp::throw_ex(isolate, "invalid address for sock_to_ip");
+			
+			return std::string();
+		}
 
 		if (address->sa_family == AF_INET)
 		{
@@ -1254,8 +1878,9 @@ namespace v8_wrapper
 
 			return std::string(ip_address);
 		}
-		
-		throw std::exception("invalid family for sock_to_ip");
+
+		v8pp::throw_ex(isolate, "invalid family for sock_to_ip");
+		return std::string();
 	}
 
 	/**

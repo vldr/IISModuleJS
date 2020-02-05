@@ -1,5 +1,7 @@
 #include "CppUnitTest.h"
 #include "helpers.h"
+#include <httplib/httplib.h>
+#include <rpc/client.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -11,7 +13,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getAbsPath(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -57,7 +59,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getMethod(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -76,56 +78,12 @@ public:
 		}
 		{
 			httplib::Client http_client(HOST);
-			auto response = http_client.Post("/", httplib::Params());
+			auto response = http_client.Post("/", "", "text/html");
 
 			if (!response) Assert::Fail(L"failed to get http response.");
 
 			Assert::AreEqual(
 				response->body == "POST",
-				true
-			);
-		}
-		{
-			httplib::Client http_client(HOST);
-			auto response = http_client.Delete("/", httplib::Headers());
-
-			if (!response) Assert::Fail(L"failed to get http response.");
-
-			Assert::AreEqual(
-				response->body == "DELETE",
-				true
-			);
-		}
-		{
-			httplib::Client http_client(HOST);
-			auto response = http_client.Put("/", "", "");
-
-			if (!response) Assert::Fail(L"failed to get http response.");
-
-			Assert::AreEqual(
-				response->body == "PUT",
-				true
-			);
-		}
-		{
-			httplib::Client http_client(HOST);
-			auto response = http_client.Patch("/", "", "");
-
-			if (!response) Assert::Fail(L"failed to get http response.");
-
-			Assert::AreEqual(
-				response->body == "PATCH",
-				true
-			);
-		}
-		{
-			httplib::Client http_client(HOST);
-			auto response = http_client.Options("/");
-
-			if (!response) Assert::Fail(L"failed to get http response.");
-
-			Assert::AreEqual(
-				response->body == "OPTIONS",
 				true
 			);
 		}
@@ -136,7 +94,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getFullUrl(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -188,7 +146,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getQueryString(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -234,7 +192,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getHost(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -258,7 +216,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getLocalAddress(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -293,7 +251,7 @@ public:
 		EXECUTE_SCRIPT(R"(
 		register((response, request) => {
 			response.write('' + request.getRemoteAddress(), 'text/html');
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 

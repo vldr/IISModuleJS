@@ -1,5 +1,7 @@
 #include "CppUnitTest.h"
 #include "helpers.h"
+#include <httplib/httplib.h>
+#include <rpc/client.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
  
@@ -23,7 +25,7 @@ public:
 				"application/json"
 			);
 
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 
@@ -54,7 +56,7 @@ public:
 				"application/json"
 			);
 
-			return RQ_NOTIFICATION_FINISH_REQUEST;
+			return FINISH;
 		});
 		)");
 

@@ -36,6 +36,8 @@
 #include <v8pp/class.hpp>
 #include <v8pp/module.hpp>
 #include <thread>
+
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
@@ -45,12 +47,100 @@
 #define HTTP_REQUEST ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetRequest()
 #define HTTP_RESPONSE ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetResponse()
 
+#define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
+
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))
 
 namespace v8_wrapper
 {
-	/*
+	/**
+	 * An enum representing different types
+	 * of callbacks.
+	 */
+	enum CALLBACK_TYPES
+	{
+		BEGIN_REQUEST,
+		SEND_RESPONSE,
+		PRE_BEGIN_REQUEST
+	};
+
+	/**
+	 * A class which allows the ability to allocate an
+	 * external char array to be used with a v8::String.
+	 */
+	class ExternalString : public v8::String::ExternalOneByteStringResource
+	{
+	public:
+		ExternalString(size_t length)
+		{
+			data_ = new char[length];
+			length_ = length;
+		}
+
+		~ExternalString() override
+		{
+			delete[] data_;
+		}
+
+		const char* data() const override
+		{
+			return (const char*)data_;
+		}
+
+		size_t length() const override
+		{
+			return length_;
+		}
+	private:
+		char* data_;
+		size_t length_;
+	};
+
+	/**
+	 * A class representing the http.fetch request object.
+	 */
+	class FetchRequest
+	{
+	public:
+		FetchRequest(std::string hostname, std::string path)
+		: hostname(std::move(hostname)), path(std::move(path))
+		{};
+
+		bool is_ssl = false;
+		std::string hostname;
+		std::string path;
+		std::string method = "GET";
+		std::string body;
+		httplib::Headers headers;
+	};
+
+	/**
+	 * A class that manages the httplib::Response object and
+	 * a persistent handle to the fetch response object.
+	 */
+	class FetchResponse
+	{
+	public:
+		FetchResponse(
+			v8::Isolate* isolate,
+			v8::Local<v8::Object> object,
+			httplib::Response * response
+		) : m_response(response), response_object(isolate, object)
+		{
+			object->SetAlignedPointerInInternalField(0, m_response);
+		}
+		
+		~FetchResponse()
+		{
+			delete m_response;
+		}
+		
+		httplib::Response * m_response;
+		v8::Persistent<v8::Object> response_object;
+	};
+	
+	/**
 	 * The delegate that handles deserialization.
 	 */
 	class DeserializerDelegate : public v8::ValueDeserializer::Delegate
@@ -148,7 +238,12 @@ namespace v8_wrapper
 		v8::ArrayBuffer::Contents m_array_buffer;
 	};
 
-	REQUEST_NOTIFICATION_STATUS begin_request(IHttpContext * pHttpContext);
+	const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
+		const void* lookup_key,
+		const char* const names[],
+		size_t count);
+	
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();
