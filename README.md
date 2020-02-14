@@ -278,8 +278,6 @@ register(
 );
 ```
 
-#
-
 ## Request
 
 ### **Read**
