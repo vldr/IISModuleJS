@@ -5,14 +5,14 @@ interface IISRequest {
      * set this to **true** if you expect to let the request continue to PHP or any other 
      * module which will use the request data.
      */
-    read(rewrite?: boolean): void
+    read(rewrite?: boolean): string
 
     /**
      * Set a new URL for the request. Can be used to rewrite urls but is not recommended.
      * @param url The new url to set.
-     * @param resetQueryString Whether to remove preexisting query strings from the request.
+     * @param resetQuerystring Whether to remove preexisting query strings from the request.
      */
-    setUrl(url: String, resetQueryString?: boolean): void
+    setUrl(url: string, resetQuerystring?: boolean): void
 
     /**
      * Sets or appends the value of a specified HTTP request header.
@@ -43,7 +43,7 @@ interface IISRequest {
     /**
      * Returns the query string for the request.
      */
-    getQueryString(): string
+    getQuerystring(): string
 
     /**
      * Returns the full url for the request.
@@ -83,7 +83,11 @@ interface IISResponse {
      * @param contentEncoding Sets the Content-Encoding header so you can 
      * provide compressed data through a response.
      */
-    write(body: string | Uint8Array, mimeType?: string, contentEncoding?: string): void
+    write(
+        body: string | Uint8Array, 
+        mimeType?: string, 
+        contentEncoding?: string
+    ): void
 
     /**
      * Sets or appends the value of a specified HTTP request header.
@@ -152,7 +156,7 @@ interface IISResponse {
      * @param statusCode The status code to set, ex: 200
      * @param statusMessage The status message to set, ex: "OK"
      */
-    setStatus(statusCode: Number, statusMessage: String): void
+    setStatus(statusCode: Number, statusMessage: string): void
 
     /**
      * Redirects the client to a specified URL.
@@ -178,15 +182,16 @@ interface IISResponse {
 
 interface FetchRequestInit {
     body?: string,
-    method?: number,
+    method?: string,
     is_ssl?: boolean,
     headers?: string[][]
 }
 
 interface FetchResponse {
-    status(): number
-    text(): string | null
-    blob(): Uint8Array | null
+    status(): number,
+    text(): string | null,
+    blob(): Uint8Array | null,
+    headers(): Object<String, String>
 }
 
 interface HTTP {
@@ -227,7 +232,8 @@ interface IPC {
  */
 declare function register(
     type: number,
-    callback?: (response: IISResponse, request: IISRequest, flag: number) => number | Promise<number>
+    callback?: (response: IISResponse, request: IISRequest, flag: number) 
+    => number | Promise<number>
 ): void;
 
 
