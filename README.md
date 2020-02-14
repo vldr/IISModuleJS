@@ -102,7 +102,9 @@ This is the default callback and should be used in most cases. All features will
 
 **SEND_RESPONSE:**
 <p>
-This callback occurs when IIS sends the response buffer. This means if you want to read the response body after it has been written to then this callback must be used. </p>
+This callback occurs when IIS sends the response buffer. This means if you want to read the response body after it has been written to then this callback must be used. 
+
+Also, this is the only callback which provides an extra parameter <b>flag</b> which can be read up on [here.](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/isendresponseprovider-getflags-method#remarks)</p>
 
 **PRE_BEGIN_REQUEST:**
 <p>
