@@ -589,8 +589,6 @@ register((response, request) =>
 });
 ```
 
-#
-
 ## Response
 
 ### **Write**
