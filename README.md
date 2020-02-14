@@ -20,7 +20,7 @@ All scripts are executed from the `%PUBLIC%` directory. The module watches each 
 
 Scripts should be named with their corresponding [application pool name](https://blogs.msdn.microsoft.com/rohithrajan/2017/10/08/quick-reference-iis-application-pool/). For example, the site `vldr.org` would likely have the application pool name `vldr_org` thus the script should be named `vldr_org.js`
 
-You can load as many subsequent scripts as you want using the [load](#loadfilename-string--void) function.
+You can load as many subsequent scripts as you want using the [load](#load) function.
 
 # API
 #### Pipeline Object
