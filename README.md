@@ -80,6 +80,8 @@ interface FetchResponse {
 
 #
 
+### **Register**
+
 ```ts
 register(
     callbackType: number,
@@ -120,6 +122,8 @@ register(callback);
 
 #
 
+### **Load**
+
 ```ts
 load(...fileName: string[]): void
 ```
@@ -137,6 +141,8 @@ load("script.js", "script2.js");
 
 #
 
+### **Print**
+
 ```ts
 print(...msg: string[]): void
 ```
@@ -151,10 +157,11 @@ print("test message");
 print("test message", "and then some");
 ```
 
-#
+
 ## IPC
 The interprocess communication interface provides a key-value store where you can share JavaScript data across different processes/workers.
 
+### **Set**
 
 ```ts
 ipc.set(key: string, value: any): void
@@ -188,6 +195,8 @@ register((response, request) =>
 
 #
 
+### **Get**
+
 ```ts
 ipc.get(key: string): any | null
 ```
@@ -220,9 +229,11 @@ register((response, request) =>
     return CONTINUE;
 });
 ```
-#
+
 
 ## HTTP
+
+### **Fetch**
 
 ```ts
 fetch(
@@ -270,6 +281,8 @@ register(
 #
 
 ## Request
+
+### **Read**
 
 ```ts
 read(rewrite?: boolean): void
@@ -321,6 +334,8 @@ register((response, request) =>
 ```
 #
 
+### **SetURL**
+
 ```ts
 setUrl(url: string, resetQuerystring?: boolean): void
 ```
@@ -340,6 +355,8 @@ register((response, request) =>
 ```
 
 #
+
+### **SetHeader**
 
 ```ts
 setHeader(headerName: string, headerValue: string, shouldReplace?: boolean): void
@@ -365,6 +382,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **GetHeader**
 
 ```ts 
 getHeader(headerName: string): string | null
@@ -392,6 +411,8 @@ register((response, request) =>
 ```
 #
 
+### **DeleteHeader**
+
 ```ts 
 deleteHeader(headerName: String): void
 ```
@@ -408,6 +429,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **GetHost**
 
 ```ts 
 getHost(): String
@@ -430,6 +453,9 @@ register((response, request) =>
 ```
 #
 
+
+### **GetQueryString**
+
 ```ts 
 getQueryString(): String
 ```
@@ -451,6 +477,8 @@ register((response, request) =>
 ```
 #
 
+### **GetFullUrl**
+
 ```ts 
 getFullUrl(): String
 ```
@@ -471,6 +499,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **GetAbsPath**
 
 ```ts 
 getAbsPath(): String
@@ -494,6 +524,8 @@ register((response, request) =>
 
 #
 
+### **GetMethod**
+
 ```ts 
 getMethod(): String
 ```
@@ -513,6 +545,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **GetLocalAddress**
 
 ```ts 
 getLocalAddress(): String
@@ -534,6 +568,8 @@ register((response, request) =>
 ```
 
 #
+
+### **GetRemoteAddress**
 
 ```ts 
 getRemoteAddress(): String
@@ -558,6 +594,8 @@ register((response, request) =>
 #
 
 ## Response
+
+### **Write**
 
 ```ts
 write(
@@ -600,6 +638,8 @@ register((response, request) =>
 ```
 #
 
+### **SetHeader**
+
 ```ts
 setHeader(headerName: string, headerValue: string, shouldReplace?: boolean): void
 ```
@@ -625,6 +665,8 @@ register((response, request) =>
 ```
 
 #
+
+### **GetHeader**
 
 ```ts
 getHeader(headerName: string): string | null
@@ -653,6 +695,8 @@ register((response, request) =>
 
 #
 
+### **DeleteHeader**
+
 ```ts
 deleteHeader(headerName: String): void
 ```
@@ -672,6 +716,8 @@ register((response, request) =>
 
 #
 
+### **Clear**
+
 ```ts
 clear(): void
 ```
@@ -690,6 +736,8 @@ register((response, request) =>
 
 #
 
+### **ClearHeaders**
+
 ```ts
 clearHeaders(): void
 ```
@@ -706,6 +754,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **CloseConnection**
 
 ```ts
 closeConnection(): void
@@ -724,6 +774,8 @@ register((response, request) =>
 ```
 #
 
+### **SetNeedDisconnect**
+
 ```ts
 setNeedDisconnect(): void
 ```
@@ -740,6 +792,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **GetKernelCacheEnabled**
 
 ```ts
 getKernelCacheEnabled(): boolean
@@ -758,6 +812,8 @@ register((response, request) =>
 ```
 #
 
+### **ResetConnection**
+
 ```ts
 resetConnection(): void
 ```
@@ -774,6 +830,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **GetStatus**
 
 ```ts
 getStatus(): number
@@ -793,6 +851,8 @@ register((response, request) =>
 
 #
 
+### **SetStatus**
+
 ```ts
 setStatus(statusCode: Number, statusMessage: string): void
 ```
@@ -810,6 +870,8 @@ register((response, request) =>
 ```
 
 #
+
+### **Redirect**
 
 ```ts
 redirect(url: string, resetStatusCode: boolean, includeParameters: boolean): boolean
@@ -829,6 +891,8 @@ register((response, request) =>
 
 #
 
+### **SetErrorDescription**
+
 ```ts
 setErrorDescription(decription: string, shouldHtmlEncode: boolean): boolean
 ```
@@ -845,6 +909,8 @@ register((response, request) =>
 });
 ```
 #
+
+### **DisableKernelCache**
 
 ```ts
 disableKernelCache(reason: number): void
