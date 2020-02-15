@@ -42,17 +42,23 @@ Types of callbacks (**callbackType**):
 
 **BEGIN_REQUEST:**
 <p>
-This is the default callback and should be used in most cases. All features will work except <b>response.read</b> and <b>request.setUrl</b>. </p>
+This callback is called at the start of every request to your IIS server. This means that IIS has placed the request into the pipeline and will (unless told otherwise by returning FINISH) pass this request to other modules (PHP, CGI, static file handler, etc).
+    
+Note that this is the default callback and should be used in most cases. All features will work except <b>response.read</b> and <b>request.setUrl</b>.</p>
 
 **SEND_RESPONSE:**
 <p>
-This callback occurs when IIS sends the response buffer. This means if you want to read the response body after it has been written to then this callback must be used. 
+This callback occurs when IIS sends the response body to your clients. This means if you want to read or write to the response body then this callback must be used. 
 
-Also, this is the only callback which provides an extra parameter <b>flag</b> which can be read up on [here.](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/isendresponseprovider-getflags-method#remarks)</p>
+Also, this is the only callback which provides an extra parameter <b>flag</b> which you can learn more about [here.](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/isendresponseprovider-getflags-method#remarks)</p>
 
 **PRE_BEGIN_REQUEST:**
 <p>
-This callback should be used to achieve high performance filtering and processing. Many features might not work in this callback, and some features will only work in this callback like <b>request.setUrl</b>.</p>
+This callback is also called at the start of every request to your IIS server, but unlike BEGIN_REQUEST, it is called before IIS has placed the request into the pipeline. Therefore this callback should be used to achieve high performance filtering and processing at the cost of losing various features. 
+    
+**Note:** Many features might not work in this callback, and some features will only work in this callback like <b>request.setUrl</b>.</p>
+
+#
 
 Your callback function must return either **CONTINUE** (0) or **FINISH** (1), which are provided in the runtime environment:
 - Use **CONTINUE** if you want the request to continue to other modules and the rest of the pipeline.
