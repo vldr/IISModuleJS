@@ -26,7 +26,7 @@ You can load as many subsequent scripts as you want using the [load](#load) func
 
 ### **Register**
 
-```ts
+```javascript
 register(
     callbackType: number,
     callback?: (response: IISResponse, request: IISRequest, flag: number) 
@@ -74,7 +74,7 @@ register(callback);
 
 ### **Load**
 
-```ts
+```javascript
 load(...fileName: string[]): void
 ```
 Loads a script using **fileName** as the name of the JavaScript file, the name should include the extension.
@@ -93,7 +93,7 @@ load("script.js", "script2.js");
 
 ### **Print**
 
-```ts
+```javascript
 print(...msg: string[]): void
 ```
 Prints **msg** using OutputDebugString. You can observe the print out using a debugger or [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
@@ -113,7 +113,7 @@ The interprocess communication interface provides a key-value store where you ca
 
 ### **Set**
 
-```ts
+```javascript
 ipc.set(key: string, value: any): void
 ```
 
