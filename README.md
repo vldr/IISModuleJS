@@ -52,7 +52,7 @@ Also, this is the only callback which provides an extra parameter <b>flag</b> wh
 
 **PRE_BEGIN_REQUEST:**
 <p>
-This callback should be used to achieve high performance filtering and processing. Many features might not working in this callback, and some features will only work in this callback like <b>request.setUrl</b>. </p>
+This callback should be used to achieve high performance filtering and processing. Many features might not work in this callback, and some features will only work in this callback like <b>request.setUrl</b>.</p>
 
 Your callback function must return either **CONTINUE** (0) or **FINISH** (1), which are provided in the runtime environment:
 - Use **CONTINUE** if you want the request to continue to other modules and the rest of the pipeline.
