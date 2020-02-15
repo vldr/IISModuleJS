@@ -231,7 +231,7 @@ register(
 
 #### FetchRequestInit Object
 This object represents the initialization information for the http.fetch function call.
-Enables to set any custom settings that you want to apply to the request.
+Allows to set any custom settings that you want to apply to the request.
 
 The **body** accessor is the body of the request.<br>
 The **method** accessor is the request method, e.g., GET, POST. <br>
