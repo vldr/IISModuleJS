@@ -23,62 +23,6 @@ Scripts should be named with their corresponding [application pool name](https:/
 You can load as many subsequent scripts as you want using the [load](#load) function.
 
 # API
-#### Pipeline Object
-The members of the Pipeline enumeration are used as return values from request-level notifications, and the members help to control process flow within the integrated request-processing pipeline.[⁺](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/request-notification-status-enumeration#remarks)
-
-* Use *CONTINUE* if you want the request to continue to other modules and the rest of the pipeline.
-* Use *FINISH* if you want the request to be handled only by yourself.
-
-```ts
-enum PIPELINE {
-    // Continue processing to other modules (static file, rewrite, etc).
-    CONTINUE = 0,
-
-    // Finish request processing.
-    FINISH = 1 
-}
-```
-
-#
-
-#### FetchRequestInit Object
-This object represents the initialization information for the http.fetch function call.
-Enables to set any custom settings that you want to apply to the request.
-
-The **body** accessor is the body of the request.<br>
-The **method** accessor is the request method, e.g., GET, POST. <br>
-The **is_ssl** accessor represents whether the request is connecting to a TLS enabled endpoint.<br>
-The **headers** accessor represents a key-value object (ordinary JS object) which will be used as the headers for the request.
-
-```ts
-interface FetchRequestInit {
-    body?: string,
-    method?: number,
-    is_ssl?: boolean,
-    headers?: string[][]
-}
-```
-
-
-
-#### FetchResponse Object
-This object represents the response from the http.fetch function call. 
-
-The **status()** method returns the status code of the response.<br>
-The **text()** method returns the response body as a **string** if it exists otherwise **null**.<br>
-The **blob()** method returns the response body as a **Uint8Array** if it exists otherwise **null**.<br>
-The **headers()** method returns the response headers as an **Object<String, String>**.
-
-```ts
-interface FetchResponse {
-    status(): number,
-    text(): string | null,
-    blob(): Uint8Array | null,
-    headers(): Object<String, String>
-}
-```
-
-#
 
 ### **Register**
 
@@ -92,9 +36,9 @@ register(
 
 Registers a given function as a callback which will be called for every request.
 
-Your callback function will be provided a [Response](#response) object, and a [Request](#request) object respectively. The callback function can also be asynchronous but keep in mind that this will yield far **worse** performance than using an synchronous function.
+Your callback function will be provided a [Response](#response) object, and a [Request](#request) object respectively. 
 
-There types of **callbackType**:
+Types of callbacks (**callbackType**):
 
 **BEGIN_REQUEST:**
 <p>
@@ -110,7 +54,11 @@ Also, this is the only callback which provides an extra parameter <b>flag</b> wh
 <p>
 This callback should be used to achieve high performance filtering and processing. Many features might not working in this callback, and some features will only work in this callback like <b>request.setUrl</b>. </p>
 
+Your callback function must return either **CONTINUE** or **FINISH**:
+- Use **CONTINUE** if you want the request to continue to other modules and the rest of the pipeline.
+- Use **FINISH** if you want the request to be handled only by yourself.
 
+The callback function can also be asynchronous but keep in mind that this will yield far **worse** performance than using a synchronous function.
 
 **Example:**
 ```javascript
@@ -278,6 +226,44 @@ register(
         return FINISH;
     }
 );
+```
+#
+
+#### FetchRequestInit Object
+This object represents the initialization information for the http.fetch function call.
+Enables to set any custom settings that you want to apply to the request.
+
+The **body** accessor is the body of the request.<br>
+The **method** accessor is the request method, e.g., GET, POST. <br>
+The **is_ssl** accessor represents whether the request is connecting to a TLS enabled endpoint.<br>
+The **headers** accessor represents a key-value object (ordinary JS object) which will be used as the headers for the request.
+
+```ts
+interface FetchRequestInit {
+    body?: string,
+    method?: number,
+    is_ssl?: boolean,
+    headers?: string[][]
+}
+```
+
+#
+
+#### FetchResponse Object
+This object represents the response from the http.fetch function call. 
+
+The **status()** method returns the status code of the response.<br>
+The **text()** method returns the response body as a **string** if it exists otherwise **null**.<br>
+The **blob()** method returns the response body as a **Uint8Array** if it exists otherwise **null**.<br>
+The **headers()** method returns the response headers as an **Object<String, String>**.
+
+```ts
+interface FetchResponse {
+    status(): number,
+    text(): string | null,
+    blob(): Uint8Array | null,
+    headers(): Object<String, String>
+}
 ```
 
 ## Request
