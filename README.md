@@ -30,7 +30,7 @@ You can load as many subsequent scripts as you want using the [load](#load) func
 register(
     callbackType: number,
     callback?: (response: IISResponse, request: IISRequest, flag: number) 
-    => PIPELINE | Promise<PIPELINE>
+    => number | Promise<number>
 ): void
 ```
 
@@ -54,7 +54,7 @@ Also, this is the only callback which provides an extra parameter <b>flag</b> wh
 <p>
 This callback should be used to achieve high performance filtering and processing. Many features might not working in this callback, and some features will only work in this callback like <b>request.setUrl</b>. </p>
 
-Your callback function must return either **CONTINUE** or **FINISH**:
+Your callback function must return either **CONTINUE** (0) or **FINISH** (1), which are provided in the runtime environment:
 - Use **CONTINUE** if you want the request to continue to other modules and the rest of the pipeline.
 - Use **FINISH** if you want the request to be handled only by yourself.
 
