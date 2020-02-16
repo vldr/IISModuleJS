@@ -28,8 +28,8 @@ You can load as many subsequent scripts as you want using the [load](#load) func
 
 ```javascript
 register(
-    callbackType: number,
-    callback?: (response: IISResponse, request: IISRequest, flag: number) 
+    callbackType?: number,
+    callback: (response: IISResponse, request: IISRequest, flag: number) 
     => number | Promise<number>
 ): void
 ```
