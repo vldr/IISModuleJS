@@ -222,7 +222,7 @@ register(
         await http.fetch("xkcd.com", "/info.0.json", { is_ssl: true })
             .then((reply) => {
                 // Write our response using the reply body.
-                response.write(reply.body, "application/json");
+                response.write(reply.blob(), "application/json");
             })
             .catch((error) => {
                 // Write our error as the response.
@@ -269,7 +269,7 @@ interface FetchResponse {
     status(): number,
     text(): string | null,
     blob(): Uint8Array | null,
-    headers(): Object<String, String>
+    headers(): Object
 }
 ```
 
