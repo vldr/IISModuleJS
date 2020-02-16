@@ -46,7 +46,7 @@ Types of callbacks (**callbackType**):
 <p>
 This callback is called at the start of every request to your IIS server. This means that IIS has placed the request into the pipeline and will (unless told otherwise by returning FINISH) pass this request to other modules (PHP, CGI, static file handler, etc).
     
-Note that this is the default callback and should be used in most cases. All features will work except <b>response.read</b> and <b>request.setUrl</b>.</p>
+**Note:** This is the default callback and should be used in most cases. All features will work except <b>response.read</b> and [request.setUrl](#seturl)</b>.</p>
 
 **SEND_RESPONSE:**
 <p>
@@ -58,8 +58,7 @@ Also, this is the only callback which provides an extra parameter <b>flag</b> wh
 <p>
 This callback is also called at the start of every request to your IIS server, but unlike BEGIN_REQUEST, it is called before IIS has placed the request into the pipeline. Therefore this callback should be used to achieve high performance filtering and processing at the cost of losing various features. 
     
-**Note:** Many features might not work in this callback, and some features will only work in this callback like <b>request.setUrl</b>.</p>
-
+**Note:** Many features might not work in this callback, and some features will only work in this callback like [request.setUrl](#seturl).</p>
 #
 
 Your callback function must return either **CONTINUE** (0) or **FINISH** (1), which are provided in the runtime environment:
@@ -333,14 +332,17 @@ register((response, request) =>
 ```ts
 setUrl(url: string, resetQuerystring?: boolean): void
 ```
-Set a new URL for the request. Can be used to rewrite urls but is **not** recommended.
+Set a new URL for the request. Can be used to rewrite urls but is **not** recommended because the SetUrl method is called after the initial parameters for
+ the request have been gathered, so subsequent request processing may be unaware of the changed URL.  
 
 The **url** parameter specifies to which path to rewrite the request to.<br>
 The **resetQuerystring** parameter specifies whether to reset query string(s) associated with the request (erase them entirely).
 
+**Note:** You should only call SetUrl in the **PRE_BEGIN_REQUEST** callback, otherwise it will likely not function properly. 
+
 **Example:**
 ```javascript
-register((response, request) => 
+register(PRE_BEGIN_REQUEST, (response, request) => 
 {
     request.setUrl("/example", false);
     
