@@ -913,6 +913,25 @@ register((response, request) =>
 ```
 #
 
+### **DisableBuffering**
+   
+```ts
+disableBuffering(): void
+```
+Disables response buffering for the current request.
+
+**Example:**
+```javascript
+register((response, request) => 
+{
+    response.disableBuffering();
+
+    return FINISH;
+});
+```
+
+#
+
 ### **DisableKernelCache**
 
 ```ts
