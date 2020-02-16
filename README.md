@@ -38,6 +38,8 @@ Registers a given function as a callback which will be called for every request.
 
 Your callback function will be provided a [Response](#response) object, and a [Request](#request) object respectively. 
 
+#
+
 Types of callbacks (**callbackType**):
 
 **BEGIN_REQUEST:**
