@@ -1,4 +1,4 @@
-<img src="https://i.imgur.com/JpPLWOC.png" />
+<img src="http://i.vldr.org/grYvNOr.svg" />
 A middleware for IIS (Internet Information Services) that allows you to harness the power and convenience of JavaScript for each request.
 
 # 
@@ -589,6 +589,13 @@ register((response, request) =>
 
 ## Response
 
+### **Read**
+
+```ts
+read(asArray?: bool): string | Uint8Array | null
+```
+Reads the response body, if the body is empty this will return **null**. This method can only be used in the **SEND_RESPONSE** callback.
+
 ### **Write**
 
 ```ts
@@ -598,6 +605,8 @@ write(
     contentEncoding?: string
 ): void
 ```
+
+Writes to the body of the response.
 
 The **body** parameter gets written to the response. <br>
 The **mimeType** parameter sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) header with the given value.<br>
