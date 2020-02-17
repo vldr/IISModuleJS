@@ -56,7 +56,7 @@ Also, this is the only callback which provides an extra parameter <b>flag</b> wh
 
 **PRE_BEGIN_REQUEST:**
 <p>
-This callback is also called at the start of every request to your IIS server, but unlike BEGIN_REQUEST, it is called before IIS has placed the request into the pipeline. Therefore this callback should be used to achieve high performance filtering and processing at the cost of losing various features. 
+This callback is also called at the start of every request to your IIS server, but unlike BEGIN_REQUEST, it is called before IIS has placed the request into the pipeline and <b>CANNOT</b> be asynchronous. Therefore this callback should be used to achieve high performance filtering and processing at the cost of losing various features. 
     
 **Note:** Many features might not work in this callback, and some features will only work in this callback like [request.setUrl](#seturl).</p>
 #
@@ -65,7 +65,7 @@ Your callback function must return either **CONTINUE** (0) or **FINISH** (1), wh
 - Use **CONTINUE** if you want the request to continue to other modules and the rest of the pipeline.
 - Use **FINISH** if you want the request to be handled only by yourself.
 
-The callback function can also be asynchronous but keep in mind that this will yield far **worse** performance than using a synchronous function.
+The callback function can also be asynchronous (except for **PRE_BEGIN_REQUEST**) but keep in mind that this will yield far **worse** performance than using a synchronous function.
 
 **Example:**
 ```javascript
