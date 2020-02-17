@@ -42,19 +42,19 @@ Your callback function will be provided a [Response](#response) object, and a [R
 
 Types of callbacks (**callbackType**):
 
-**BEGIN_REQUEST:**
+**[BEGIN_REQUEST](#beginRequest):**
 <p>
 This callback is called at the start of every request to your IIS server. This means that IIS has placed the request into the pipeline and will (unless told otherwise by returning FINISH) pass this request to other modules (PHP, CGI, static file handler, etc).
     
 **Note:** This is the default callback and should be used in most cases. All features will work except <b>response.read</b> and [request.setUrl](#seturl)</b>.</p>
 
-**SEND_RESPONSE:**
+**[SEND_RESPONSE](#sendResponse):**
 <p>
 This callback occurs when IIS sends the response body to your clients. This means if you want to read or write to the response body then this callback must be used. 
 
 Also, this is the only callback which provides an extra parameter <b>flag</b> which you can learn more about [here.](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/isendresponseprovider-getflags-method#remarks)</p>
 
-**PRE_BEGIN_REQUEST:**
+**[PRE_BEGIN_REQUEST](#preBeginRequest):**
 <p>
 This callback is also called at the start of every request to your IIS server, but unlike BEGIN_REQUEST, it is called before IIS has placed the request into the pipeline and <b>CANNOT</b> be asynchronous. Therefore this callback should be used to achieve high performance filtering and processing at the cost of losing various features. 
     
@@ -594,7 +594,7 @@ register((response, request) =>
 ```ts
 read(asArray?: bool): string | Uint8Array | null
 ```
-Reads the response body, if the body is empty this will return **null**. This method can only be used in the **SEND_RESPONSE** callback.
+Reads the response body, if the body is empty this will return **null**. This method can only be used in the [SEND_RESPONSE](#sendResponse) callback.
 
 #
 
