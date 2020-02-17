@@ -596,6 +596,8 @@ read(asArray?: bool): string | Uint8Array | null
 ```
 Reads the response body, if the body is empty this will return **null**. This method can only be used in the **SEND_RESPONSE** callback.
 
+#
+
 ### **Write**
 
 ```ts
