@@ -50,7 +50,7 @@ This callback is called at the start of every request to your IIS server. This m
 
 **SEND_RESPONSE:**
 <p>
-This callback occurs when IIS sends the response body to your clients. This means if you want to read or write to the response body then this callback must be used. 
+This callback is called when IIS sends the response body to your clients. This means if you want to read or write to the response body then this callback must be used. 
 
 Also, this is the only callback which provides an extra parameter <b>flag</b> which you can learn more about [here.](https://docs.microsoft.com/en-us/iis/web-development-reference/native-code-api-reference/isendresponseprovider-getflags-method#remarks)</p>
 
