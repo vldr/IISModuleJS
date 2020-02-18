@@ -46,7 +46,7 @@ Types of callbacks (**callbackType**):
 <p>
 This callback is called at the start of every request to your IIS server. This means that IIS has placed the request into the pipeline and will (unless told otherwise by returning FINISH) pass this request to other modules (PHP, CGI, static file handler, etc).
     
-**Note:** This is the default callback and should be used in most cases. All features will work except <b>response.read</b> and [request.setUrl](#seturl)</b>.</p>
+**Note:** This is the default callback and should be used in most cases. All features will work except [response.read](#read-1) and [request.setUrl](#seturl)</b>.</p>
 
 **SEND_RESPONSE:**
 <p>
