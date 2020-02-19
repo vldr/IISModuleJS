@@ -262,7 +262,7 @@ This object represents the response from the http.fetch function call.
 The **status()** method returns the status code of the response.<br>
 The **text()** method returns the response body as a **string** if it exists otherwise **null**.<br>
 The **blob()** method returns the response body as a **Uint8Array** if it exists otherwise **null**.<br>
-The **headers()** method returns the response headers as an **Object<String, String>**.
+The **headers()** method returns the response headers as an object.
 
 ```ts
 interface FetchResponse {
@@ -332,7 +332,7 @@ register((response, request) =>
 ```ts
 setUrl(url: string, resetQuerystring?: boolean): void
 ```
-Set a new URL for the request. Can be used to rewrite urls but is **not** recommended because the SetUrl method is called after the initial parameters for
+Set a new URL for the request. Can be used to rewrite urls but is **not** recommended because the setUrl method is called after the initial parameters for
  the request have been gathered, so subsequent request processing may be unaware of the changed URL.  
 
 The **url** parameter specifies to which path to rewrite the request to.<br>
