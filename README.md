@@ -596,6 +596,10 @@ read(asArray?: bool): string | Uint8Array | null
 ```
 Reads the response body, if the body is empty this will return **null**. This method can only be used in the **SEND_RESPONSE** callback.
 
+
+The **asArray** parameter specifies whether to return the response body as a Uint8Array, it is optional and
+by default it is set to false. 
+
 #
 
 ### **Write**
@@ -611,7 +615,8 @@ write(
 Writes to the body of the response.
 
 The **body** parameter gets written to the response. <br>
-The **mimeType** parameter sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) header with the given value.<br>
+The **mimeType** parameter sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) header with the given value; 
+the parameter is also optional and by default is set to "text/html".<br>
 The **contentEncoding** parameter sets the [Content-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) header so you can provide compressed data through a response. 
 
 **Example:**
