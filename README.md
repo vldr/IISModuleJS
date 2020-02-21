@@ -610,13 +610,11 @@ const HTTP_SEND_RESPONSE_FLAG_BUFFER_DATA = 0x00000004;
 const HTTP_SEND_RESPONSE_FLAG_ENABLE_NAGLING = 0x00000008;
 
 register(BEGIN_REQUEST, (response, request) => 
-{
-    // Write 131072(= 65536 * 2) bytes so IIS will buffer 
-    // the response into two chunks. 
+{ 
+    // Write "test" to our response body.
     response.write("test");
-
-    // We'd like to make sure that were the only ones who write to the response,
-    // thus we finish the request here. 
+    
+    // Finish here since we only want ourselves modifying the response body.
     return FINISH;
 });
 
