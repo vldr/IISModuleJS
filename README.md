@@ -600,6 +600,51 @@ Reads the response body, if the body is empty this will return **null**. This me
 The **asArray** parameter specifies whether to return the response body as a Uint8Array, it is optional and
 by default it is set to false. 
 
+**Example:**
+Please understand that this example is not guaranteed to function properly for every underlying application. Every application is different and each application may or may not properly set the response flags. 
+
+```javascript
+const HTTP_SEND_RESPONSE_FLAG_DISCONNECT = 0x00000001;
+const HTTP_SEND_RESPONSE_FLAG_MORE_DATA = 0x00000002;
+const HTTP_SEND_RESPONSE_FLAG_BUFFER_DATA = 0x00000004;
+const HTTP_SEND_RESPONSE_FLAG_ENABLE_NAGLING = 0x00000008;
+
+register(BEGIN_REQUEST, (response, request) => 
+{
+    // Write 131072(= 65536 * 2) bytes so IIS will buffer 
+    // the response into two chunks. 
+    response.write("test");
+
+    // We'd like to make sure that were the only ones who write to the response,
+    // thus we finish the request here. 
+    return FINISH;
+});
+
+register(SEND_RESPONSE, (response, request, flags) => 
+{
+    const data = response.read();
+    
+    ///////////////////////////////
+
+    if (flags & HTTP_SEND_RESPONSE_FLAG_DISCONNECT)
+        print("HTTP_SEND_RESPONSE_FLAG_DISCONNECT");
+
+    if (flags & HTTP_SEND_RESPONSE_FLAG_MORE_DATA)
+        print("HTTP_SEND_RESPONSE_FLAG_MORE_DATA");
+
+    if (flags & HTTP_SEND_RESPONSE_FLAG_BUFFER_DATA)
+        print("HTTP_SEND_RESPONSE_FLAG_BUFFER_DATA");
+        
+    ///////////////////////////////
+
+    print(`SEND_RESPONSE - flag: ${flags} - data: ${data}`);
+    
+    ///////////////////////////////
+    
+    return CONTINUE;
+});
+```
+
 #
 
 ### **Write**
