@@ -1,4 +1,4 @@
-<img src="http://i.vldr.org/grYvNOr.svg" />
+<img src="logo.svg" />
 A middleware for IIS (Internet Information Services) that allows you to harness the power and convenience of JavaScript for each request.
 
 # 
