@@ -278,7 +278,7 @@ interface FetchResponse {
 ### **Read**
 
 ```ts
-read(rewrite?: boolean): void
+read(rewrite?: boolean): string
 ```
 
 Returns the HTTP request body as a String. 
