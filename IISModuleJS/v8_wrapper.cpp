@@ -14,6 +14,7 @@ namespace v8_wrapper
 
 	v8::Global<v8::Function> function_pre_begin_request;
 	v8::Global<v8::Function> function_begin_request;
+	v8::Global<v8::Function> function_directory_change;
 	v8::Global<v8::Function> function_send_response;
 
 	// A persistent context for v8.
@@ -24,6 +25,8 @@ namespace v8_wrapper
 
 	// The name of the default script to be launched. 
 	std::wstring script_name;
+	std::wstring app_pool_folder_name;
+	fs::path fs_directory;
 
 	// Cache containing all our Eternal names.
 	std::unordered_map<
@@ -48,7 +51,9 @@ namespace v8_wrapper
 
 			///////////////////////////
 			
-			script_name = app_pool_name;
+			app_pool_folder_name = app_pool_name;
+
+			script_name = app_pool_folder_name;
 			script_name.append(L".js");
 
 			///////////////////////////
@@ -92,6 +97,7 @@ namespace v8_wrapper
 		global_http_request_object.Reset();
 		
 		function_begin_request.Reset();
+		function_directory_change.Reset();
 		function_send_response.Reset();
 		function_pre_begin_request.Reset();
 
@@ -100,6 +106,41 @@ namespace v8_wrapper
 
 		// Initialize our objects...
 		initialize_objects();
+	} 
+
+	/**
+	* Directory notify change callback.
+	*/
+	void directory_change_callback()
+	{
+		v8::Locker locker(isolate);
+		v8::Isolate::Scope isolate_scope(isolate);
+		v8::HandleScope handle_scope(isolate);
+		v8::Context::Scope context_scope(context.Get(isolate));
+		
+		////////////////////////////////////////////
+
+		if (function_directory_change.IsEmpty()) 
+			return;
+
+		////////////////////////////////////////////
+
+		auto local_function = function_directory_change.Get(isolate);
+			
+		function_directory_change.Get(isolate)->Call(
+			isolate->GetCurrentContext(),
+			v8::Null(isolate),
+			0,
+			NULL
+		);
+	}
+
+	/**
+	* Returns the path to the filesystem directory.
+	*/
+	std::experimental::filesystem::path get_fs_path(std::wstring file_name)
+	{
+		return fs_directory / fs::path(file_name).filename();
 	}
 
 	/**
@@ -201,36 +242,62 @@ namespace v8_wrapper
 
 		//////////////////////////////////////////
 
-		// Get our working directory path to monitor for changes.
 		auto script_path = get_path(script_name);
+
+		fs_directory = get_path() / app_pool_folder_name;
+
+		//////////////////////////////////////////
+		  
+		HANDLE change_notify_handle = 0;
+
+		//////////////////////////////////////////
+		 
+		if (!fs::is_directory(fs_directory))
+		{
+			vs_printf("Attempting to create a filesystem directory.\n");
+
+			vs_printf(
+				CreateDirectoryW(fs_directory.c_str(), NULL) ?
+				"Successfully created a new workspace directory.\n" 
+				: "Failed to create a workspace directory!\n" 
+			);
+		}  
 
 		//////////////////////////////////////////
 
-		// Setup our last write.
 		fs::file_time_type last_write;
-		std::error_code ec;
+		std::error_code ec; 
 
 		for (;;)
-		{
-			// Check if our file exists, and last write has changed
+		{ 
+			// Check if our file exists, and last write has changed.
 			if (last_write != fs::last_write_time(script_path, ec) && !ec)
 			{
-				// Update our last write.
 				last_write = fs::last_write_time(script_path);
-
-				// Log our action.
 				vs_printf("Resetting engine and loading \"%ws\" script...\n", script_name.c_str());
 
-				// Reset our engine by creating a new contex.
 				reset_engine();
-
-				// Execute our file using the script path.
 				execute_file(script_path.c_str());
-			}
+			} 
 
-			// Sleep for one second.
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-		}		
+			//////////////////////////////////////////
+
+			change_notify_handle = FindFirstChangeNotificationW(
+				fs_directory.c_str(),
+				FALSE,
+				FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE
+			);
+
+			auto wait_for = WaitForSingleObject(
+				change_notify_handle,
+				1000
+			);
+
+			if (wait_for == WAIT_OBJECT_0)
+			{
+				directory_change_callback();
+			}
+		}	 
 		
 		//////////////////////////////////////////
 	}
@@ -728,7 +795,112 @@ namespace v8_wrapper
 				escapable_handle_scope.Escape(
 					value.ToLocalChecked()
 				)
-			);
+			); 
+		});
+
+		////////////////////////////////////////
+		  
+		// fs Property 
+		v8pp::module fs_module(isolate);
+		    
+		// fs.register(callback: Function): void
+		fs_module.set("register", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1) throw std::exception("invalid function signature for fs.register");
+
+			////////////////////////////////////////////////
+
+			function_directory_change.Reset(isolate, v8::Local<v8::Function>::Cast(args[0]));
+		});
+
+		// fs.read(fileName: String, asArray: bool {optional, default: false}): String || Uint8Array || null
+		fs_module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for fs.read");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a boolean for fs.read");
+
+			/////////////////////////////////////////////
+			 
+			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+				 
+			auto file_path = get_fs_path(
+				file_name
+			); 
+
+			/////////////////////////////////////////////
+
+			auto file = _wfopen(file_path.c_str(), L"rb");
+
+			// Throw an exception if we were unable to open the file.
+			if (file == nullptr)
+				throw std::exception("invalid file name, file is not accessible.");
+
+			/////////////////////////////////////////////
+
+			fseek(file, 0, SEEK_END);
+			size_t file_size = ftell(file);
+			rewind(file); 
+
+			/////////////////////////////////////////////
+
+			auto as_array = args.Length() > 1 && args[1]->IsBoolean() && v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
+
+			if (as_array)
+			{
+				auto array_buffer = v8::ArrayBuffer::New(
+					isolate,
+					file_size
+				);
+
+				////////////////////////////////////////////////
+
+				fread(
+					array_buffer->GetContents().Data(), 
+					sizeof(unsigned char), 
+					file_size, 
+					file
+				);
+
+				////////////////////////////////////////////////
+
+				auto uint8_array = v8::Uint8Array::New(
+					array_buffer,
+					0,
+					file_size
+				);
+
+				////////////////////////////////////////////////
+
+				args.GetReturnValue().Set(
+					uint8_array
+				);
+			}
+			else
+			{
+				auto external_string = new ExternalString(file_size);
+
+				////////////////////////////////////////////////
+
+				fread(
+					(void*)external_string->data(),
+					sizeof(unsigned char),
+					file_size,
+					file 
+				);
+
+				////////////////////////////////////////////////
+
+				auto string = v8::String::NewExternalOneByte(isolate, external_string);
+
+				////////////////////////////////////////////////
+
+				args.GetReturnValue().Set(
+					string.ToLocalChecked()
+				);
+			}
+
+			fclose(file);
 		});
 
 		////////////////////////////////////////
@@ -738,6 +910,9 @@ namespace v8_wrapper
 
 		// http Object
 		global.set_const("http", http_module);
+
+		// fs Object
+		global.set_const("fs", fs_module);
 
 		////////////////////////////////////////
 
@@ -1266,7 +1441,7 @@ namespace v8_wrapper
 				}
 				else 
 					throw std::exception("invalid first argument type for write");
-
+				 
 				////////////////////////////////////////////////
 
 				if (args.Length() >= 2 && args[1]->IsString())

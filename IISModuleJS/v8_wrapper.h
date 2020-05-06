@@ -250,6 +250,9 @@ namespace v8_wrapper
 	void load_and_watch();
 	void initialize_objects();
 
+	void directory_change_callback();
+	std::experimental::filesystem::path get_fs_path(std::wstring file_name);
+
 	std::experimental::filesystem::path get_path(std::wstring script);
 	void execute_file(const wchar_t * name);
 	void report_exception(v8::TryCatch * try_catch);
