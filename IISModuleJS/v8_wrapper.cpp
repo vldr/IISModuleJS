@@ -1013,7 +1013,7 @@ namespace v8_wrapper
 
 				/////////////////////////////////////////////
 
-				auto session = DB_CONTEXT->session;
+				auto session = DB_CONTEXT->session; 
 
 				/////////////////////////////////////////////
 
@@ -1047,24 +1047,42 @@ namespace v8_wrapper
 				DB_CONTEXT->result = DB_CONTEXT->statement.query();
 			});
 
-			// row(): void
-			module.set("row", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			// queryRow(): void
+			module.set("queryRow", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
 
 				/////////////////////////////////////////////
 
 				DB_CONTEXT->result = DB_CONTEXT->statement.row();
 			});
+			 
+			// close(): void
+			module.set("close", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for close");
+
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->session.close();
+			});
 
 			// next(): bool
 			module.set("next", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
+				if (!DB_CONTEXT) throw std::exception("invalid db context for next");
 
 				/////////////////////////////////////////////
 
 				RETURN_THIS(
 					DB_CONTEXT->result.next()
 				)
+			});
+
+			// resetBind(): void
+			module.set("resetBind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for rewind");
+
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->result.rewind_column();
 			});
 
 			// fetch(dataType: DB_DATA_TYPES, name: String): Number | String | boolean | null | Uint8Array
@@ -1154,7 +1172,6 @@ namespace v8_wrapper
 
 					if (with_index) DB_CONTEXT->statement.bind(index, value);
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
-
 				}
 				// Handle 32-bit integer data binding.
 				else if (input_value->IsInt32())
@@ -1166,7 +1183,7 @@ namespace v8_wrapper
 				}
 				// Handle boolean data binding.
 				else if (input_value->IsBoolean())
-				{
+				{ 
 					auto value = v8pp::from_v8<bool>(args.GetIsolate(), input_value);
 
 					if (with_index) DB_CONTEXT->statement.bind(index, value);
