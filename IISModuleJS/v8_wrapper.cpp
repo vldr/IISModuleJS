@@ -1038,50 +1038,151 @@ namespace v8_wrapper
 				DB_CONTEXT->statement.exec();
 			});
 
-			// bind(value: Number | String | boolean | null): void
-			module.set("bind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!DB_CONTEXT) throw std::exception("invalid db context for bind");
+			// query(): void
+			module.set("query", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for query");
 
-				if (args.Length() < 1) throw std::exception("not enough arugments for bind");
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->result = DB_CONTEXT->statement.query();
+			});
+
+			// row(): void
+			module.set("row", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
+
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->result = DB_CONTEXT->statement.row();
+			});
+
+			// next(): bool
+			module.set("next", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
+
+				/////////////////////////////////////////////
+
+				RETURN_THIS(
+					DB_CONTEXT->result.next()
+				)
+			});
+
+			// fetch(dataType: DB_DATA_TYPES, name: String): Number | String | boolean | null | Uint8Array
+			module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for fetch");
+
+				if (args.Length() < 2)
+					throw std::exception("not enough arugments for fetch");
+
+				/////////////////////////////////////////////
+
+				int data_type = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+
+				/////////////////////////////////////////////
+
+				v8::String::Utf8Value name(isolate, args[1]);
+
+				if (!*name)
+					throw std::exception("second argument is invalid for fetch");
+
+				/////////////////////////////////////////////
+
+				switch (data_type)
+				{
+				case DB_DATA_TYPES::STRING:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<const char*>(*name)
+					)
+					break;
+				case DB_DATA_TYPES::INTEGER:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<int>(*name)
+					)
+					break;
+				case DB_DATA_TYPES::DOUBLE:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<double>(*name)
+					)
+					break;
+				case DB_DATA_TYPES::BOOL:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<bool>(*name)
+					)
+					break;
+				default:
+					throw std::exception("unknown data type for fetch");
+					break;
+				}
+			});
+
+			// [SIGNATURE 1]
+			// bind(value: Number | String | boolean | null | Uint8Array): void
+			//
+			// [SIGNATURE 2]
+			// bind(index: Number {32-bit integer only}, value: Number | String | boolean | null | Uint8Array): void
+			module.set("bind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) 
+					throw std::exception("invalid db context for bind");
+
+				if (args.Length() < 1) 
+					throw std::exception("not enough arugments for bind");
 		
 				/////////////////////////////////////////////
 
 				bool with_index = args.Length() > 1;
-
 				auto input_value = args[with_index];
+
+				// Throw an exception if we were provided an index 
+				// but it isn't the correct data type.
+				if (with_index && !args[0]->IsInt32()) 
+					throw std::exception("invalid index type for bind");
+
+				// Get our index if provided.
+				int index = with_index ? v8pp::from_v8<int>(args.GetIsolate(), args[0]) : 0;
 
 				/////////////////////////////////////////////
 
+				// Handle string data binding.
 				if (input_value->IsString())
 				{
 					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), input_value);
 
-					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+					if (with_index) DB_CONTEXT->statement.bind(index, value);
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+
 				}
+				// Handle 32-bit integer data binding.
 				else if (input_value->IsInt32())
 				{
 					auto value = v8pp::from_v8<int>(args.GetIsolate(), input_value);
 
-					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+					if (with_index) DB_CONTEXT->statement.bind(index, value);
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
 				}
+				// Handle boolean data binding.
 				else if (input_value->IsBoolean())
 				{
 					auto value = v8pp::from_v8<bool>(args.GetIsolate(), input_value);
 
-					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+					if (with_index) DB_CONTEXT->statement.bind(index, value);
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
 				}
+				// Handle double data binding.
 				else if (input_value->IsNumber())
 				{
 					auto value = v8pp::from_v8<double>(args.GetIsolate(), input_value);
 
-					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+					if (with_index) DB_CONTEXT->statement.bind(index, value);
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
 				}
+				// Handle null or undefined data binding.
 				else if (input_value->IsNullOrUndefined())
 				{
-					DB_CONTEXT->statement = DB_CONTEXT->statement.bind_null();
+					if (with_index) DB_CONTEXT->statement.bind_null(index);
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind_null();
 				}
-				else
-					throw std::exception("invalid parameter type for bind");
+				// Throw an exception if we don't support a data type given.
+				else throw std::exception("invalid parameter type for bind");
 			});
 
 			// Set our internal field count.
