@@ -14,16 +14,20 @@
 #include <Shlobj.h>
 #include <httplib/httplib.h>
 
+#pragma comment(lib, "sqlite3.lib")
+
 #ifdef _DEBUG
 #include <rpc/server.h>
 #pragma comment(lib, "v8_monolith.64.lib")
 #pragma comment(lib, "rpc.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "libcppdb.lib")
 #else
 #pragma comment(lib, "v8_monolith.release.64.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "dbghelp.lib")
+#pragma comment(lib, "libcppdb.release.lib")
 #endif
 
 #pragma comment(lib, "crypt32.lib")
@@ -35,7 +39,9 @@
 #include <v8.h>
 #include <v8pp/class.hpp>
 #include <v8pp/module.hpp>
+#include <cppdb/frontend.h>
 #include <thread>
+
 
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
@@ -48,6 +54,7 @@
 #define HTTP_RESPONSE ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetResponse()
 
 #define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
+#define DB_CONTEXT ((DbContext*)args.This()->GetAlignedPointerFromInternalField(0))
 
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))
@@ -113,6 +120,38 @@ namespace v8_wrapper
 		std::string method = "GET";
 		std::string body;
 		httplib::Headers headers;
+	};
+
+	/**
+	* A struct that will manage the statement and session objects.
+	*/
+	struct DbContext {
+		cppdb::session session = cppdb::session();
+		cppdb::statement statement = cppdb::statement();
+	};
+
+	/**
+	 * A class that manages the everything related to the db object.
+	 */
+	class DbHandler
+	{
+	public:
+		DbHandler(
+			v8::Isolate* isolate,
+			v8::Local<v8::Object> object,
+			DbContext * context
+		) : m_context(context), db_object(isolate, object)
+		{
+			object->SetAlignedPointerInInternalField(0, context);
+		}
+
+		~DbHandler()
+		{
+			delete m_context;
+		}
+
+		DbContext * m_context;
+		v8::Persistent<v8::Object> db_object;
 	};
 
 	/**

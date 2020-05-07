@@ -6,6 +6,7 @@ namespace v8_wrapper
 	namespace fs = std::experimental::filesystem;
 
 	// All the global objects and functions for v8.
+	v8::Global<v8::Object> global_db_object;
 	v8::Global<v8::Object> global_fetch_object;
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
@@ -822,7 +823,7 @@ namespace v8_wrapper
 				throw std::exception("invalid function signature for fs.read");
 
 			if (!args[0]->IsString())
-				throw std::exception("invalid first parameter, must be a boolean for fs.read");
+				throw std::exception("invalid first parameter, must be a string for fs.read");
 
 			/////////////////////////////////////////////
 			 
@@ -909,6 +910,55 @@ namespace v8_wrapper
 
 		////////////////////////////////////////
 
+		// db Property 
+		v8pp::module db_module(isolate);
+		 
+		// db.init(connectionInfo: String): db Object
+		db_module.set("init", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for db.init");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for db.init");
+
+			/////////////////////////////////////////////
+
+			auto connection_info = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+			/////////////////////////////////////////////
+
+			auto db_context = std::make_unique<DbContext>();
+			db_context.get()->session.open(connection_info);
+
+			//////////////////////////////////
+
+			auto db_object = global_db_object.Get(isolate)->Clone();
+			auto db_handler = new DbHandler(isolate, db_object, db_context.release());
+
+			//////////////////////////////////
+
+			db_handler->db_object.SetWeak(
+				db_handler,
+				[](const v8::WeakCallbackInfo<DbHandler>& data)
+				{
+					data.GetParameter()->db_object.Reset();
+
+					///////////////////////////////
+
+					delete data.GetParameter();
+				},
+				v8::WeakCallbackType::kParameter
+			);
+
+			//////////////////////////////////
+
+			args.GetReturnValue().Set(
+				db_object
+			);
+		});
+
+		////////////////////////////////////////
+
 		// ipc Object
 		global.set_const("ipc", ipc_module);
 
@@ -917,6 +967,9 @@ namespace v8_wrapper
 
 		// fs Object
 		global.set_const("fs", fs_module);
+
+		// db Object
+		global.set_const("db", db_module);
 
 		////////////////////////////////////////
 
@@ -933,6 +986,111 @@ namespace v8_wrapper
 		v8::HandleScope handle_scope(isolate);
 		v8::Context::Scope context_scope(context.Get(isolate));
 
+		/////////////////////////////
+		//      DB JS Object       //
+		/////////////////////////////
+		
+		if (global_db_object.IsEmpty())
+		{
+			// Setup our module...
+			v8pp::module module(isolate);
+
+			// Setup our functions
+
+			// prepare(query: String): void
+			module.set("prepare", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for prepare");
+
+				if (args.Length() < 1)
+					throw std::exception("invalid function signature for prepare");
+
+				if (!args[0]->IsString())
+					throw std::exception("invalid first parameter, must be a string for prepare");
+
+				/////////////////////////////////////////////
+
+				auto query = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+				/////////////////////////////////////////////
+
+				auto session = DB_CONTEXT->session;
+
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->statement = session.prepare(query);
+			});
+
+			// reset(): void
+			module.set("reset", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for reset");
+
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->statement.reset();
+			});
+
+			// exec(): void
+			module.set("exec", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for exec");
+
+				/////////////////////////////////////////////
+
+				DB_CONTEXT->statement.exec();
+			});
+
+			// bind(value: Number | String | boolean | null): void
+			module.set("bind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for bind");
+
+				if (args.Length() < 1) throw std::exception("not enough arugments for bind");
+		
+				/////////////////////////////////////////////
+
+				bool with_index = args.Length() > 1;
+
+				auto input_value = args[with_index];
+
+				/////////////////////////////////////////////
+
+				if (input_value->IsString())
+				{
+					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), input_value);
+
+					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+				}
+				else if (input_value->IsInt32())
+				{
+					auto value = v8pp::from_v8<int>(args.GetIsolate(), input_value);
+
+					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+				}
+				else if (input_value->IsBoolean())
+				{
+					auto value = v8pp::from_v8<bool>(args.GetIsolate(), input_value);
+
+					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+				}
+				else if (input_value->IsNumber())
+				{
+					auto value = v8pp::from_v8<double>(args.GetIsolate(), input_value);
+
+					DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+				}
+				else if (input_value->IsNullOrUndefined())
+				{
+					DB_CONTEXT->statement = DB_CONTEXT->statement.bind_null();
+				}
+				else
+					throw std::exception("invalid parameter type for bind");
+			});
+
+			// Set our internal field count.
+			module.obj_->SetInternalFieldCount(1);
+
+			// Reset our pointer...
+			global_db_object.Reset(isolate, module.new_instance());
+		}
+		
 		/////////////////////////////
 		// FetchResponse JS Object //
 		/////////////////////////////
