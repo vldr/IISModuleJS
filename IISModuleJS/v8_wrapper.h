@@ -72,7 +72,7 @@ namespace v8_wrapper
 		SEND_RESPONSE,
 		PRE_BEGIN_REQUEST
 	};
-
+	 
 	/**
 	 * An enum representing different types
 	 * of fetch return types.
@@ -84,39 +84,6 @@ namespace v8_wrapper
 		DOUBLE,
 		BOOL,
 		BINARY
-	};
-
-	/**
-	 * Memory buffer extension of streambuf.
-	 */
-	class MemBuffer : public std::basic_streambuf<char> 
-	{
-	public:
-		MemBuffer(const unsigned char * p, size_t l) 
-		{
-			setg((char*)p, (char*)p, (char*)p + l);
-		}
-	};
-
-	/**
-	 * Memory stream extension of std::isteam.
-	 */
-	class MemStream : public std::istream 
-	{
-	public:
-		MemStream(void* buf, size_t len) : 
-			std::istream(&m_buffer),
-			m_len(len),
-			m_byte_buffer(std::make_unique<unsigned char*>(len)),
-			m_buffer((unsigned char*)m_byte_buffer.get(), len)
-		{
-			rdbuf(&m_buffer);
-		}
-
-	private:
-		std::unique_ptr<unsigned char*> m_byte_buffer;
-		size_t m_len;
-		MemBuffer m_buffer;
 	};
 
 	/**

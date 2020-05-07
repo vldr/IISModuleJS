@@ -1070,20 +1070,25 @@ namespace v8_wrapper
 			// fetch(dataType: DB_DATA_TYPES, name: String): Number | String | boolean | null | Uint8Array
 			module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for fetch");
-
+				 
 				if (args.Length() < 2)
 					throw std::exception("not enough arugments for fetch");
 
-				/////////////////////////////////////////////
+				if (!args[0]->IsInt32() || !args[1]->IsString())
+					throw std::exception("invalid first parameter, must be a string for prepare");
 
+				///////////////////////////////////////////// 
+				 
 				int data_type = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
 
 				/////////////////////////////////////////////
 
-				v8::String::Utf8Value name(isolate, args[1]);
+				auto name = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
 
-				if (!*name)
-					throw std::exception("second argument is invalid for fetch");
+				/////////////////////////////////////////////
+
+				if (DB_CONTEXT->result.is_null(name))
+					RETURN_NULL
 
 				/////////////////////////////////////////////
 
@@ -1091,22 +1096,22 @@ namespace v8_wrapper
 				{
 				case DB_DATA_TYPES::STRING:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<const char*>(*name)
+						DB_CONTEXT->result.get<std::string>(name)
 					)
 					break;
 				case DB_DATA_TYPES::INTEGER:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<int>(*name)
+						DB_CONTEXT->result.get<int>(name)
 					)
 					break;
 				case DB_DATA_TYPES::DOUBLE:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<double>(*name)
+						DB_CONTEXT->result.get<double>(name)
 					)
 					break;
 				case DB_DATA_TYPES::BOOL:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<bool>(*name)
+						(bool)DB_CONTEXT->result.get<int>(name)
 					)
 					break;
 				default:
@@ -1130,7 +1135,7 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				bool with_index = args.Length() > 1;
-				auto input_value = args[with_index];
+				auto input_value = args[with_index]; 
 
 				// Throw an exception if we were provided an index 
 				// but it isn't the correct data type.
