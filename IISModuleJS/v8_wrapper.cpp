@@ -222,7 +222,7 @@ namespace v8_wrapper
 	 * and watches for changes every second. 
 	 */
 	void load_and_watch()
-	{ 
+	{  
 
 #ifdef _DEBUG
 		// Setup our rpc server to handle remote code executions 
@@ -267,6 +267,7 @@ namespace v8_wrapper
 
 		fs::file_time_type last_write;
 		std::error_code ec; 
+		DWORD wait_for = 0; 
 
 		for (;;)
 		{ 
@@ -278,20 +279,23 @@ namespace v8_wrapper
 
 				reset_engine();
 				execute_file(script_path.c_str());
-			} 
+			}   
 
 			//////////////////////////////////////////
 
-			change_notify_handle = FindFirstChangeNotificationW(
-				fs_directory.c_str(),
-				FALSE,
-				FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE
-			);
+			if (wait_for != WAIT_TIMEOUT) 
+			{
+				change_notify_handle = FindFirstChangeNotificationW(
+					fs_directory.c_str(),
+					FALSE,
+					FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE
+				);
+			}
 
 			auto wait_for = WaitForSingleObject(
 				change_notify_handle,
 				1000
-			);
+			); 
 
 			if (wait_for == WAIT_OBJECT_0)
 			{
