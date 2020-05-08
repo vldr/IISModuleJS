@@ -983,7 +983,7 @@ namespace v8_wrapper
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
-		v8::HandleScope handle_scope(isolate);
+		v8::HandleScope handle_scope(isolate); 
 		v8::Context::Scope context_scope(context.Get(isolate));
 
 		/////////////////////////////
@@ -1013,11 +1013,7 @@ namespace v8_wrapper
 
 				/////////////////////////////////////////////
 
-				auto session = DB_CONTEXT->session; 
-
-				/////////////////////////////////////////////
-
-				DB_CONTEXT->statement = session.prepare(query);
+				DB_CONTEXT->statement = DB_CONTEXT->session.prepare(query);
 			});
 
 			// reset(): void
@@ -1036,16 +1032,16 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				DB_CONTEXT->statement.exec();
-			});
+			}); 
 
 			// query(): void
 			module.set("query", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for query");
-
+				 
 				/////////////////////////////////////////////
 
 				DB_CONTEXT->result = DB_CONTEXT->statement.query();
-			});
+			}); 
 
 			// queryRow(): void
 			module.set("queryRow", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -1063,6 +1059,9 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				DB_CONTEXT->session.close();
+				DB_CONTEXT->session = DbSession();
+				DB_CONTEXT->statement = cppdb::statement();
+				DB_CONTEXT->result = cppdb::result::result();
 			});
 
 			// next(): bool
@@ -1076,13 +1075,57 @@ namespace v8_wrapper
 				)
 			});
 
-			// resetBind(): void
-			module.set("resetBind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!DB_CONTEXT) throw std::exception("invalid db context for rewind");
+			// fetchCol(dataType: DB_DATA_TYPES, col: Number): Number | String | boolean | null | Uint8Array
+			module.set("fetchCol", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for fetch");
+				 
+				if (args.Length() < 2)
+					throw std::exception("not enough arugments for fetch");
+
+				if (!args[0]->IsInt32() || !args[1]->IsInt32())
+					throw std::exception("invalid parameters, must be an integer and integer");
+
+				///////////////////////////////////////////// 
+				 
+				int data_type = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
 
 				/////////////////////////////////////////////
 
-				DB_CONTEXT->result.rewind_column();
+				auto col = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
+
+				/////////////////////////////////////////////
+
+				if (DB_CONTEXT->result.is_null(col))
+					RETURN_NULL
+
+				/////////////////////////////////////////////
+
+				switch (data_type)
+				{
+				case DB_DATA_TYPES::STRING:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<std::string>(col)
+					)
+					break;
+				case DB_DATA_TYPES::INTEGER:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<int>(col)
+					)
+					break;
+				case DB_DATA_TYPES::DOUBLE:
+					RETURN_THIS(
+						DB_CONTEXT->result.get<double>(col)
+					)
+					break;
+				case DB_DATA_TYPES::BOOL:
+					RETURN_THIS(
+						(bool)DB_CONTEXT->result.get<int>(col)
+					)
+					break;
+				default:
+					throw std::exception("unknown data type for fetch");
+					break;
+				}  
 			});
 
 			// fetch(dataType: DB_DATA_TYPES, name: String): Number | String | boolean | null | Uint8Array
@@ -1093,7 +1136,7 @@ namespace v8_wrapper
 					throw std::exception("not enough arugments for fetch");
 
 				if (!args[0]->IsInt32() || !args[1]->IsString())
-					throw std::exception("invalid first parameter, must be a string for prepare");
+					throw std::exception("invalid parameters, must be an integer and string");
 
 				///////////////////////////////////////////// 
 				 
@@ -1135,14 +1178,14 @@ namespace v8_wrapper
 				default:
 					throw std::exception("unknown data type for fetch");
 					break;
-				}
+				}  
 			});
 
 			// [SIGNATURE 1]
-			// bind(value: Number | String | boolean | null | Uint8Array): void
-			//
+			// bind(value: Number | String | boolean | null): void
+			// 
 			// [SIGNATURE 2]
-			// bind(index: Number {32-bit integer only}, value: Number | String | boolean | null | Uint8Array): void
+			// bind(index: Number {32-bit integer only}, value: Number | String | boolean | null): void
 			module.set("bind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) 
 					throw std::exception("invalid db context for bind");
@@ -1203,8 +1246,26 @@ namespace v8_wrapper
 					if (with_index) DB_CONTEXT->statement.bind_null(index);
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind_null();
 				}
-				// Throw an exception if we don't support a data type given.
-				else throw std::exception("invalid parameter type for bind");
+				// Attempt to call toString on the object.
+				else
+				{
+					v8::Local<v8::String> to_string;
+
+					//////////////////////////////////////
+
+					auto result = input_value->ToString(args.GetIsolate()->GetCurrentContext())
+						.ToLocal(&to_string); 
+
+					if (!result)
+						throw std::exception("invalid type provided.");
+
+					//////////////////////////////////////
+
+					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), to_string);
+
+					if (with_index) DB_CONTEXT->statement.bind(index, value);
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+				}
 			});
 
 			// Set our internal field count.

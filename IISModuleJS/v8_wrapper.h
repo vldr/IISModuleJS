@@ -137,10 +137,22 @@ namespace v8_wrapper
 	};
 
 	/**
-	* A struct that will manage the statement and session objects.
+	* A wrapper on top of cppdb::session.
 	*/
+	class DbSession : public cppdb::session
+	{
+	public:
+		~DbSession()
+		{
+			this->close();
+		}
+	};
+
+	/**
+	* A struct that will manage the statement and session objects.
+	*/ 
 	struct DbContext {
-		cppdb::session session = cppdb::session();
+		DbSession session = DbSession();
 		cppdb::statement statement = cppdb::statement();
 		cppdb::result result = cppdb::result::result();
 	};
