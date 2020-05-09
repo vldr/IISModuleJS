@@ -688,13 +688,27 @@ namespace v8_wrapper
 					fetch_response,
 					[](const v8::WeakCallbackInfo<FetchResponse>& data)
 					{
+						// Reset our JS object.
 						data.GetParameter()->response_object.Reset();
 
 						///////////////////////////////
 
+						// Delete our object.
 						delete data.GetParameter();
+
+						///////////////////////////////
+
+						// Decrement our external memory usage.
+						data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
+							-data.GetParameter()->capacity()
+						);
 					},
 					v8::WeakCallbackType::kParameter
+				);
+
+				// Increment our external memory usage.
+				isolate->AdjustAmountOfExternalAllocatedMemory(
+					fetch_response->capacity()
 				);
 
 				//////////////////////////////////

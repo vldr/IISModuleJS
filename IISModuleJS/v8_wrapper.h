@@ -178,6 +178,11 @@ namespace v8_wrapper
 			delete m_context;
 		}
 
+		size_t capacity()
+		{
+			return sizeof DbContext;
+		}
+
 		DbContext * m_context;
 		v8::Persistent<v8::Object> db_object;
 	};
@@ -201,6 +206,17 @@ namespace v8_wrapper
 		~FetchResponse()
 		{
 			delete m_response;
+		}
+
+		size_t capacity()
+		{
+			size_t sum = 0;
+			sum += m_response->body.capacity();
+			sum += m_response->version.capacity();
+			sum += sizeof m_response->status;
+			sum += (sizeof(std::string) + sizeof(std::pair<std::string, std::string>)) * m_response->headers.size();
+
+			return sum;
 		}
 		
 		httplib::Response * m_response;
