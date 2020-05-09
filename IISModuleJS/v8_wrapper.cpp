@@ -693,15 +693,15 @@ namespace v8_wrapper
 
 						///////////////////////////////
 
-						// Delete our object.
-						delete data.GetParameter();
-
-						///////////////////////////////
-
 						// Decrement our external memory usage.
 						data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
 							-data.GetParameter()->capacity()
 						);
+
+						///////////////////////////////
+
+						// Delete our object.
+						delete data.GetParameter();
 					},
 					v8::WeakCallbackType::kParameter
 				);
@@ -955,13 +955,29 @@ namespace v8_wrapper
 				db_handler,
 				[](const v8::WeakCallbackInfo<DbHandler>& data)
 				{
+					// Reset our JS object.
 					data.GetParameter()->db_object.Reset();
 
 					///////////////////////////////
 
+					// Decrement our external memory usage.
+					isolate->AdjustAmountOfExternalAllocatedMemory(
+						-data.GetParameter()->capacity()
+					);
+
+					///////////////////////////////
+
+					// Delete our object.
 					delete data.GetParameter();
 				},
 				v8::WeakCallbackType::kParameter
+			);
+
+			//////////////////////////////////
+
+			// Increment our external memory usage.
+			isolate->AdjustAmountOfExternalAllocatedMemory(
+				db_handler->capacity()
 			);
 
 			//////////////////////////////////
