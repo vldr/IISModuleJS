@@ -21,5 +21,7 @@ HRESULT WINAPI RegisterModule(DWORD dwServerVersion, IHttpModuleRegistrationInfo
 
 	//////////////////////////////////////
 	
-	return pModuleInfo->SetRequestNotifications(new ModuleFactory(), RQ_BEGIN_REQUEST | RQ_SEND_RESPONSE, 0);
+	return pModuleInfo->SetRequestNotifications(new ModuleFactory(),
+		RQ_BEGIN_REQUEST | RQ_SEND_RESPONSE, 0
+	);
 } 

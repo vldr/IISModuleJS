@@ -11,7 +11,7 @@ REQUEST_NOTIFICATION_STATUS HttpModule::OnBeginRequest(IN IHttpContext* pHttpCon
 	// Return processing to the pipeline. 
 	return REQUEST_NOTIFICATION_STATUS(
 		v8_wrapper::handle_callback(v8_wrapper::BEGIN_REQUEST, pHttpContext, pProvider)
-	);
+	); 
 }
 
 /**

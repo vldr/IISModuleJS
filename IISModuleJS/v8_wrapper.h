@@ -10,7 +10,7 @@
 #include <ws2tcpip.h>
 #include <httpserv.h>
 #include <vector>
-#include <string>
+#include <string> 
 #include <Shlobj.h>
 #include <httplib/httplib.h>
 
@@ -51,8 +51,10 @@
 #define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
 
 #define HTTP_CONTEXT ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))
-#define HTTP_REQUEST ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetRequest()
-#define HTTP_RESPONSE ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))->GetResponse()
+#define HTTP_REQUEST HTTP_CONTEXT->GetRequest()
+#define HTTP_RESPONSE HTTP_CONTEXT->GetResponse()
+#define RESET_INTERNAL_POINTERS http_response_object->SetAlignedPointerInInternalField(0, nullptr); \
+http_request_object->SetAlignedPointerInInternalField(0, nullptr); 
 
 #define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
 #define DB_CONTEXT ((DbContext*)args.This()->GetAlignedPointerFromInternalField(0))
@@ -118,6 +120,38 @@ namespace v8_wrapper
 		size_t length_;
 	};
 
+	/**
+	* A class that handles the IHttpContext object.
+	*/
+	class HttpContextHandler 
+	{
+	public:
+		HttpContextHandler() : m_http_context(nullptr) {}
+
+		HttpContextHandler(IHttpContext * http_context)
+			: m_http_context(http_context)  {}
+
+		void set(IHttpContext * http_context)
+		{
+			m_http_context = http_context;
+		}
+
+		void reset()
+		{
+			m_http_context = nullptr;
+
+			delete this;
+		}
+
+		IHttpContext * get()
+		{
+			return m_http_context;
+		}
+
+	private:
+		IHttpContext * m_http_context;
+	};
+
 
 	/**
 	 * A class representing the http.fetch request object.
@@ -178,7 +212,7 @@ namespace v8_wrapper
 			delete m_context;
 		}
 
-		size_t capacity()
+		int64_t capacity()
 		{
 			return sizeof DbContext;
 		}
@@ -208,9 +242,9 @@ namespace v8_wrapper
 			delete m_response;
 		}
 
-		size_t capacity()
+		int64_t capacity()
 		{
-			size_t sum = 0;
+			int64_t sum = 0;
 			sum += m_response->body.capacity();
 			sum += m_response->version.capacity();
 			sum += sizeof m_response->status;
@@ -326,7 +360,7 @@ namespace v8_wrapper
 		const char* const names[],
 		size_t count);
 	
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider);
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject);
 
 	void start(std::wstring app_pool_name);
 	void reset_engine();

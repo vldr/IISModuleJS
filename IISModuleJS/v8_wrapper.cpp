@@ -8,9 +8,10 @@ namespace v8_wrapper
 	// All the global objects and functions for v8.
 	v8::Global<v8::Object> global_db_object;
 	v8::Global<v8::Object> global_fetch_object;
+
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
-
+	 
 	/////////////////////////////////////////////////
 
 	v8::Global<v8::Function> function_pre_begin_request;
@@ -62,10 +63,10 @@ namespace v8_wrapper
 			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
 			
 			v8::V8::InitializePlatform(platform.get());
-			v8::V8::InitializeICU();
+			v8::V8::InitializeICU(); 
 			v8::V8::Initialize();
 #ifdef _DEBUG
-			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --trace-opt");
+			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --track-retaining-path --trace-opt --expose-gc");
 #else
 			v8::V8::SetFlagsFromString("--always-opt"); 
 #endif
@@ -920,7 +921,7 @@ namespace v8_wrapper
 			}
 
 			fclose(file);
-		});
+		}); 
 
 		////////////////////////////////////////
 
@@ -1407,49 +1408,49 @@ namespace v8_wrapper
 			 
 			// clear(): void
 			module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for clear");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for clear");
 
 				HTTP_RESPONSE->Clear();
 			});		
 
 			// clearHeaders(): void
 			module.set("clearHeaders", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for clearHeaders");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for clearHeaders");
 
 				HTTP_RESPONSE->ClearHeaders();
 			});
 
 			// closeConnection(): void
 			module.set("closeConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for closeConnection");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for closeConnection");
 					
 				HTTP_RESPONSE->CloseConnection();
 			});
 
 			// disableBuffering(): void
 			module.set("disableBuffering", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableBuffering");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableBuffering");
 
 				HTTP_RESPONSE->DisableBuffering();
 			});		
 			
 			// setNeedDisconnect(): void
 			module.set("setNeedDisconnect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setNeedDisconnect");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setNeedDisconnect");
 					
 				HTTP_RESPONSE->SetNeedDisconnect();
 			});
 
 			// getKernelCacheEnabled(): bool
 			module.set("getKernelCacheEnabled", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getKernelCacheEnabled");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for getKernelCacheEnabled");
 
 				return bool(HTTP_RESPONSE->GetKernelCacheEnabled());
 			});	
 
 			// resetConnection(): void
 			module.set("resetConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for resetConnection");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for resetConnection");
 					
 				HTTP_RESPONSE->ResetConnection(); 
 			});
@@ -1457,7 +1458,7 @@ namespace v8_wrapper
 			// getStatus(): Number
 			module.set("getStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getStatus");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for getStatus");
 
 				// Our status code...
 				USHORT status_code = 0;
@@ -1471,7 +1472,7 @@ namespace v8_wrapper
 
 			// setStatus(statusCode: Number, statusMessage: String): void
 			module.set("setStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setStatus");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setStatus");
 
 				////////////////////////////////
 				
@@ -1495,7 +1496,7 @@ namespace v8_wrapper
 
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): void
 			module.set("redirect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for redirect");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for redirect");
 
 				////////////////////////////////
 				
@@ -1522,7 +1523,7 @@ namespace v8_wrapper
 
 			// setErrorDescription(decription: String, shouldHtmlEncode: bool): void
 			module.set("setErrorDescription", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setErrorDescription");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setErrorDescription");
 
 				////////////////////////////////
 				
@@ -1546,7 +1547,7 @@ namespace v8_wrapper
 
 			// disableKernelCache(reason: Number): void
 			module.set("disableKernelCache", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableKernelCache");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableKernelCache");
 
 				////////////////////////////////
 				
@@ -1560,12 +1561,12 @@ namespace v8_wrapper
 
 				HTTP_RESPONSE->DisableKernelCache(
 					reason
-				);
+				); 
 			});
 
 			// deleteHeader(headerName: String): void
 			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for deleteHeader");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for deleteHeader");
 
 				////////////////////////////////
 				
@@ -1588,7 +1589,7 @@ namespace v8_wrapper
 
 			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for getHeader");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for getHeader");
 
 				////////////////////////////////
 
@@ -1630,7 +1631,7 @@ namespace v8_wrapper
 
 			// read(asArray: bool {optional}): String || Uint8Array || null
 			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for read");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for read");
 
 				////////////////////////////////////////////////
 
@@ -1761,7 +1762,7 @@ namespace v8_wrapper
 			// write(body: String || Uint8Array, mimetype: String {optional}, contentEncoding: String {optional}): void
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
 
 				// Check arguments.
 				if (args.Length() < 1) throw std::exception("invalid signature for write");
@@ -1861,7 +1862,7 @@ namespace v8_wrapper
 
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for setHeader");
+				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setHeader");
 
 				////////////////////////////////
 
@@ -1908,7 +1909,7 @@ namespace v8_wrapper
 			
 			// read(rewrite: bool {optional}): String || null
 			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for read");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for read");
 
 				////////////////////////////////
 
@@ -1997,7 +1998,8 @@ namespace v8_wrapper
 
 			// setUrl(url: String, resetQueryString: bool {optional}): void
 			module.set("setUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for setUrl");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for setUrl");
+
 				////////////////////////////////
 
 				if (args.Length() < 1) throw std::exception("invalid signature for setUrl");
@@ -2022,7 +2024,7 @@ namespace v8_wrapper
 
 			// deleteHeader(headerName: String): void
 			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for deleteHeader");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for deleteHeader");
 
 				///////////////////////////////
 				
@@ -2045,7 +2047,7 @@ namespace v8_wrapper
 
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
 			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for setHeader");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for setHeader");
 
 				////////////////////////////////
 
@@ -2058,7 +2060,6 @@ namespace v8_wrapper
 				auto should_replace = v8pp::from_v8<bool>(args.GetIsolate(), args[2], true);
 
 				////////////////////////////////
-
 				auto hr = HTTP_REQUEST->SetHeader(
 					header_name.c_str(),
 					header_value.c_str(), 
@@ -2073,7 +2074,7 @@ namespace v8_wrapper
 
 			// getMethod(): String
 			module.set("getMethod", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
 				RETURN_THIS(
 					std::string(HTTP_REQUEST->GetHttpMethod())
@@ -2082,7 +2083,7 @@ namespace v8_wrapper
 
 			// getAbsPath(): String
 			module.set("getAbsPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
 				RETURN_THIS(
 					std::wstring(
@@ -2094,7 +2095,7 @@ namespace v8_wrapper
 			 
 			// getFullUrl(): String
 			module.set("getFullUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getFullUrl");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getFullUrl");
 
 				RETURN_THIS(
 					std::wstring(
@@ -2106,7 +2107,7 @@ namespace v8_wrapper
 
 			// getQueryString(): String
 			module.set("getQueryString", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
 				RETURN_THIS( 
 					std::wstring(
@@ -2118,7 +2119,7 @@ namespace v8_wrapper
 
 			// getHost(): String
 			module.set("getHost", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getHost");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getHost");
 
 				RETURN_THIS(
 					std::wstring(
@@ -2131,7 +2132,7 @@ namespace v8_wrapper
 			// getLocalAddress(): String
 			module.set("getLocalAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getLocalAddress");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getLocalAddress");
 
 				RETURN_THIS(
 					sock_to_ip(
@@ -2143,7 +2144,7 @@ namespace v8_wrapper
 			// getRemoteAddress(): String
 			module.set("getRemoteAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getRemoteAddress");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getRemoteAddress");
 				
 				RETURN_THIS(
 					sock_to_ip(
@@ -2154,7 +2155,7 @@ namespace v8_wrapper
 
 			// getHeader(headerName: String): String || null
 			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!HTTP_REQUEST) throw std::exception("invalid p_http_request for getHeader");
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getHeader");
 				
 				////////////////////////////////
 
@@ -2204,7 +2205,7 @@ namespace v8_wrapper
 	/**
 	 * Handles a callback that is registered in JS.
 	 */
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider)
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject)
 	{
 		if (!isolate) return 0 /* CONTINUE */;
 
@@ -2213,7 +2214,7 @@ namespace v8_wrapper
 		v8::Global<v8::Function> * callback_function = nullptr;
 
 		////////////////////////////////////////////////
-
+		 
 		switch (type)
 		{
 		case BEGIN_REQUEST:
@@ -2229,10 +2230,11 @@ namespace v8_wrapper
 
 		////////////////////////////////////////////////
 		
-		if (!callback_function || callback_function->IsEmpty()) return 0 /* CONTINUE */;
-		
+		if (!callback_function || callback_function->IsEmpty()) 
+			return 0 /* CONTINUE */;
+
 		////////////////////////////////////////////////
-		
+
 		// Setup our lockers, isolate scope, and handle scope...
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -2240,7 +2242,7 @@ namespace v8_wrapper
 		v8::Context::Scope context_scope(context.Get(isolate));
 		
 		////////////////////////////////////////////////
-
+		 
 		// Clone our arguments to be given to JavaScript.
 		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
@@ -2249,8 +2251,8 @@ namespace v8_wrapper
 		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext);
 		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext);
 
-		////////////////////////////////////////////////
-		
+		//////////////////////////////////////////////// 
+
 		auto local_function = callback_function->Get(isolate);
 
 		// Our argument count.
@@ -2270,7 +2272,7 @@ namespace v8_wrapper
 			argument_count = 3;
 
 			// Set our third argument to be the provider flags.
-			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pProvider)->GetFlags());
+			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pObject)->GetFlags());
 		}
 
 		////////////////////////////////////////////////
@@ -2283,7 +2285,13 @@ namespace v8_wrapper
 		);
 
 		// Check if our function returned anything...
-		if (result.IsEmpty()) return 0 /* CONTINUE */;
+		if (result.IsEmpty())
+		{
+			// Reset internal pointers.
+			RESET_INTERNAL_POINTERS
+
+			return 0 /* CONTINUE */;
+		}
 
 		////////////////////////////////////////////////
 
@@ -2295,6 +2303,11 @@ namespace v8_wrapper
 		if (type == PRE_BEGIN_REQUEST && !result_value->IsNumber())
 		{
 			v8pp::throw_ex(isolate, "The PRE_BEGIN_REQUEST callback must return either CONTINUE or FINISH.");
+
+			////////////////////////////////////////////////
+
+			// Reset internal pointers.
+			RESET_INTERNAL_POINTERS
 
 			////////////////////////////////////////////////
 
@@ -2311,12 +2324,17 @@ namespace v8_wrapper
 			// Check if our promise is already fulfilled or rejected.
 			if (promise->State() == v8::Promise::kFulfilled || promise->State() == v8::Promise::kRejected)
 			{
+				// Reset internal pointers.
+				RESET_INTERNAL_POINTERS
+
+				////////////////////////////////////////////////
+
 				// Cast our value to a request notification...
 				return REQUEST_NOTIFICATION_STATUS(
 					v8pp::from_v8<int>(isolate, promise->Result(), 0) 
 						? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE
 				);
-			}
+			} 
 
 			//////////////////////////////////////////////////////
 
@@ -2327,24 +2345,46 @@ namespace v8_wrapper
 				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0)
 					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE;
 
+				// Cast our passthrough objects as an array.
+				auto passthrough_objects = args.Data().As<v8::Array>();
+
+				// Get the context.
+				auto context = args.GetIsolate()->GetCurrentContext(); 
+
+				// Fetch our response objects.
+				auto http_response_object = passthrough_objects->Get(context, 0).ToLocalChecked().As<v8::Object>();
+				auto http_request_object = passthrough_objects->Get(context, 1).ToLocalChecked().As<v8::Object>();
+
 				// Cast our given Data,
-				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
-					
+				auto http_context = (IHttpContext*)(
+					http_response_object->GetAlignedPointerFromInternalField(0)
+				);
+
 				// Regardless of any result,
 				// we need to indicate that the we've completed
 				// our execution to IIS.
 				http_context->IndicateCompletion(
 					REQUEST_NOTIFICATION_STATUS(request_notification_status)
-				); 
-			};
+				);
+
+				// Reset internal pointers.
+				RESET_INTERNAL_POINTERS
+			}; 
 
 			////////////////////////////////////////////////
+
+			auto context = isolate->GetCurrentContext();
+
+			// Pass our objects through.
+			auto passthrough_objects = v8::Array::New(isolate, 2);
+			passthrough_objects->Set(context, 0, http_response_object);
+			passthrough_objects->Set(context, 1, http_request_object);
 
 			// Create our callback function.
 			auto function = v8::Function::New(
 				isolate->GetCurrentContext(),
 				callback,
-				v8::External::New(isolate, pHttpContext)
+				passthrough_objects
 			).ToLocalChecked();
 			
 			// Attach our callback function to our promise to handle both scenarios.
@@ -2354,6 +2394,11 @@ namespace v8_wrapper
 
 			return RQ_NOTIFICATION_PENDING;
 		}
+
+		///////////////////////////////////////////
+
+		// Reset internal pointers.
+		RESET_INTERNAL_POINTERS
 
 		///////////////////////////////////////////
 
