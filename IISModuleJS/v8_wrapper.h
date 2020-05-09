@@ -118,6 +118,7 @@ namespace v8_wrapper
 		size_t length_;
 	};
 
+
 	/**
 	 * A class representing the http.fetch request object.
 	 */

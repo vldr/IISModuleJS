@@ -1073,82 +1073,55 @@ namespace v8_wrapper
 				RETURN_THIS(
 					DB_CONTEXT->result.next()
 				)
-			});
+			}); 
 
-			// fetchCol(dataType: DB_DATA_TYPES, col: Number): Number | String | boolean | null | Uint8Array
-			module.set("fetchCol", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-				if (!DB_CONTEXT) throw std::exception("invalid db context for fetch");
-				 
-				if (args.Length() < 2)
-					throw std::exception("not enough arugments for fetch");
-
-				if (!args[0]->IsInt32() || !args[1]->IsInt32())
-					throw std::exception("invalid parameters, must be an integer and integer");
-
-				///////////////////////////////////////////// 
-				 
-				int data_type = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
-
-				/////////////////////////////////////////////
-
-				auto col = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
-
-				/////////////////////////////////////////////
-
-				if (DB_CONTEXT->result.is_null(col))
-					RETURN_NULL
-
-				/////////////////////////////////////////////
-
-				switch (data_type)
-				{
-				case DB_DATA_TYPES::STRING:
-					RETURN_THIS(
-						DB_CONTEXT->result.get<std::string>(col)
-					)
-					break;
-				case DB_DATA_TYPES::INTEGER:
-					RETURN_THIS(
-						DB_CONTEXT->result.get<int>(col)
-					)
-					break;
-				case DB_DATA_TYPES::DOUBLE:
-					RETURN_THIS(
-						DB_CONTEXT->result.get<double>(col)
-					)
-					break;
-				case DB_DATA_TYPES::BOOL:
-					RETURN_THIS(
-						(bool)DB_CONTEXT->result.get<int>(col)
-					)
-					break;
-				default:
-					throw std::exception("unknown data type for fetch");
-					break;
-				}  
-			});
-
+			// [SIGNATURE 1]
 			// fetch(dataType: DB_DATA_TYPES, name: String): Number | String | boolean | null | Uint8Array
+			//
+			// [SIGNATURE 2]
+			// fetch(dataType: DB_DATA_TYPES, col: Number): Number | String | boolean | null | Uint8Array
 			module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for fetch");
 				 
 				if (args.Length() < 2)
 					throw std::exception("not enough arugments for fetch");
 
-				if (!args[0]->IsInt32() || !args[1]->IsString())
-					throw std::exception("invalid parameters, must be an integer and string");
+				if (!args[0]->IsInt32())
+					throw std::exception("invalid first parameter must be an integer (32-bit only)");
 
 				///////////////////////////////////////////// 
-				 
+
 				int data_type = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+				
+				///////////////////////////////////////////// 
+
+				// Default variables to be filled in according to the signature.
+				int input_col_index = 0;
+				std::string input_col_name = std::string();
+
+				///////////////////////////////////////////// 
+
+				// Boolean representing the input type.
+				bool input_type = 0;
 
 				/////////////////////////////////////////////
-
-				auto name = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+				
+				if (args[1]->IsString()) 
+				{
+					input_type = false;
+					input_col_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+				}
+				else if (args[1]->IsInt32()) 
+				{
+					input_type = true;
+					input_col_index = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
+				}
+				else 
+					throw std::exception("invalid second parameter must be an integer (32-bit only) or string");
 
 				/////////////////////////////////////////////
-
-				if (DB_CONTEXT->result.is_null(name))
+				
+				if (input_type ? DB_CONTEXT->result.is_null(input_col_index) : DB_CONTEXT->result.is_null(input_col_name))
 					RETURN_NULL
 
 				/////////////////////////////////////////////
@@ -1157,22 +1130,26 @@ namespace v8_wrapper
 				{
 				case DB_DATA_TYPES::STRING:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<std::string>(name)
+						input_type ? DB_CONTEXT->result.get<std::string>(input_col_index)
+						: DB_CONTEXT->result.get<std::string>(input_col_name)
 					)
 					break;
 				case DB_DATA_TYPES::INTEGER:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<int>(name)
+						input_type ? DB_CONTEXT->result.get<int>(input_col_index)
+						: DB_CONTEXT->result.get<int>(input_col_name)
 					)
 					break;
 				case DB_DATA_TYPES::DOUBLE:
 					RETURN_THIS(
-						DB_CONTEXT->result.get<double>(name)
+						input_type ? DB_CONTEXT->result.get<double>(input_col_index)
+						: DB_CONTEXT->result.get<double>(input_col_name)
 					)
 					break;
 				case DB_DATA_TYPES::BOOL:
 					RETURN_THIS(
-						(bool)DB_CONTEXT->result.get<int>(name)
+						(bool)(input_type ? DB_CONTEXT->result.get<int>(input_col_index)
+						: DB_CONTEXT->result.get<int>(input_col_name))
 					)
 					break;
 				default:
@@ -1397,7 +1374,7 @@ namespace v8_wrapper
 			v8pp::module module(isolate);
 
 			// Setup our functions
-			
+			 
 			// clear(): void
 			module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_RESPONSE) throw std::exception("invalid p_http_response for clear");
