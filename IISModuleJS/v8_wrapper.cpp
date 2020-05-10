@@ -282,7 +282,7 @@ namespace v8_wrapper
 				reset_engine();
 				execute_file(script_path.c_str());
 			}   
-
+			 
 			//////////////////////////////////////////
 
 			if (wait_for != WAIT_TIMEOUT) 
@@ -295,12 +295,14 @@ namespace v8_wrapper
 			}
 
 			auto wait_for = WaitForSingleObject(
-				change_notify_handle,
+				change_notify_handle, 
 				1000
 			); 
 
 			if (wait_for == WAIT_OBJECT_0)
-			{
+			{ 
+				Sleep(1000);
+
 				directory_change_callback();
 			}
 		}	 
@@ -850,7 +852,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto file = _wfopen(file_path.c_str(), L"rb");
+			auto file = _wfopen(file_path.c_str(), L"r+b");
 
 			// Throw an exception if we were unable to open the file.
 			if (file == nullptr)
@@ -1289,7 +1291,7 @@ namespace v8_wrapper
 		if (global_fetch_object.IsEmpty())
 		{
 			// Setup our module...
-			v8pp::module module(isolate);
+			v8pp::module module(isolate); 
 
 			// Setup our functions
 
@@ -1304,15 +1306,25 @@ namespace v8_wrapper
 			module.set("text", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for text");
 
-				auto body = FETCH_RESPONSE->body;
+				auto body = FETCH_RESPONSE->body; 
 
 				////////////////////////////////////////////////
 
-				if (body.empty()) RETURN_NULL;
+				if (body.empty()) RETURN_NULL; 
+				 
+				//////////////////////////////////////////////// 
+
+				auto external_string = new ExternalString(FETCH_RESPONSE->body.data(), body.length());
 
 				////////////////////////////////////////////////
-				
-				RETURN_THIS(FETCH_RESPONSE->body)
+
+				auto string = v8::String::NewExternalOneByte(isolate, external_string);
+
+				////////////////////////////////////////////////
+
+				args.GetReturnValue().Set(
+					string.ToLocalChecked()
+				); 
 			});
 
 			// blob(): Uint8Array || null
@@ -1331,14 +1343,7 @@ namespace v8_wrapper
 				
 				auto array_buffer = v8::ArrayBuffer::New(
 					isolate,
-					body.size()
-				);
-
-				////////////////////////////////////////////////
-				
-				std::memcpy(
-					array_buffer->GetContents().Data(),
-					body.data(),
+					(void*)FETCH_RESPONSE->body.data(),
 					body.size()
 				);
 
@@ -1757,7 +1762,7 @@ namespace v8_wrapper
 						string.ToLocalChecked()
 					);
 				}
-				});
+			});
 			
 			// write(body: String || Uint8Array, mimetype: String {optional}, contentEncoding: String {optional}): void
 			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -2276,7 +2281,7 @@ namespace v8_wrapper
 		}
 
 		////////////////////////////////////////////////
-
+		 
 		auto result = local_function->Call(
 			isolate->GetCurrentContext(),
 			v8::Null(isolate),

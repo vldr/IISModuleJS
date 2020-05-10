@@ -95,15 +95,16 @@ namespace v8_wrapper
 	class ExternalString : public v8::String::ExternalOneByteStringResource
 	{
 	public:
-		ExternalString(size_t length)
-		{
-			data_ = new char[length];
-			length_ = length;
-		}
+		ExternalString(size_t length) 
+			: data_(new char[length]), length_(length), was_allocated_(true) {}
+
+		ExternalString(const char* data, size_t length) 
+			: data_((char*)data), length_(length), was_allocated_(false) {}
 
 		~ExternalString() override
 		{
-			delete[] data_;
+			if (was_allocated_)
+				delete[] data_;
 		}
 
 		const char* data() const override
@@ -118,6 +119,7 @@ namespace v8_wrapper
 	private:
 		char* data_;
 		size_t length_;
+		bool was_allocated_;
 	};
 
 	/**
