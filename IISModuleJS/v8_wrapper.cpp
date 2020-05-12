@@ -1306,15 +1306,21 @@ namespace v8_wrapper
 			module.set("text", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for text");
 
-				auto body = FETCH_RESPONSE->body; 
-
 				////////////////////////////////////////////////
 
-				if (body.empty()) RETURN_NULL; 
+				if (FETCH_RESPONSE->body.empty()) RETURN_NULL;
 				 
+				////////////////////////////////////////////////  
+
+				auto external_string = new ExternalString(FETCH_RESPONSE->body.size());
+
 				//////////////////////////////////////////////// 
 
-				auto external_string = new ExternalString(FETCH_RESPONSE->body.data(), body.length());
+				std::memcpy(
+					(void*)external_string->data(),
+					FETCH_RESPONSE->body.data(),
+					FETCH_RESPONSE->body.size()
+				);
 
 				////////////////////////////////////////////////
 
@@ -1336,14 +1342,21 @@ namespace v8_wrapper
 				auto body = FETCH_RESPONSE->body;
 
 				////////////////////////////////////////////////
-				
+
 				if (body.empty()) RETURN_NULL;
-				
+
 				////////////////////////////////////////////////
-				
+
 				auto array_buffer = v8::ArrayBuffer::New(
 					isolate,
-					(void*)FETCH_RESPONSE->body.data(),
+					body.size()
+				);
+
+				////////////////////////////////////////////////
+
+				std::memcpy(
+					array_buffer->GetContents().Data(),
+					body.data(),
 					body.size()
 				);
 
@@ -1356,7 +1369,7 @@ namespace v8_wrapper
 				);
 
 				////////////////////////////////////////////////
-				
+
 				args.GetReturnValue().Set(uint8_array);
 			});
 
