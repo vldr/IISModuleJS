@@ -139,10 +139,99 @@ namespace v8_wrapper
 
 	/**
 	* Returns the path to the filesystem directory.
+	*
+	* RFC 3986 5.2.4.
+	* https://tools.ietf.org/html/rfc3986#section-5.2.4
 	*/
-	std::experimental::filesystem::path get_fs_path(std::wstring file_name)
+	std::experimental::filesystem::path get_relative_file_path(std::wstring input)
 	{
-		return fs_directory / fs::path(file_name).filename();
+		std::wstring output;
+		output.reserve(input.length());
+
+		// 1. The input buffer is initialized with the now-appended path
+		// components and the output buffer is initialized to the empty
+		// string.
+		while (!input.empty())
+		{
+			// 2.
+
+			// A. If the input buffer begins with a prefix of "../" or "./",
+			// then remove that prefix from the input buffer; otherwise,
+			if (input.find(L"../") == 0)
+			{
+				input.replace(0, 3, L"");
+			}
+			else if (input.find(L"./") == 0)
+			{
+				input.replace(0, 2, L"");
+			}
+
+			// B. if the input buffer begins with a prefix of "/./" or "/.",
+			// where "." is a complete path segment, then replace that
+			// prefix with "/" in the input buffer; otherwise,
+			else if (input.find(L"/./") == 0)
+			{
+				input.replace(0, 3, L"/");
+			}
+			else if (input == L"/.")
+			{
+				input.replace(0, 2, L"/");
+			}
+
+			// C. if the input buffer begins with a prefix of "/../" or "/..",
+			// where ".." is a complete path segment, then replace that
+			// prefix with "/" in the input buffer and remove the last
+			// segment and its preceding "/" (if any) from the output
+			// buffer; otherwise,
+			else if (input.find(L"/../") == 0)
+			{
+				input.replace(0, 4, L"/");
+
+				auto position = output.find_last_of(L"/");
+
+				if (position != std::string::npos)
+				{
+					output = output.substr(0, position);
+				}
+			}
+			else if (input == L"/..")
+			{
+				input.replace(0, 3, L"/");
+
+				auto position = output.find_last_of(L"/");
+
+				if (position != std::string::npos)
+				{
+					output = output.substr(0, position);
+				}
+			}
+
+			// D. if the input buffer consists only of "." or "..", then remove
+			// that from the input buffer; otherwise,
+			else if (input == L"." || input == L"..")
+			{
+				input = L"";
+			}
+
+			// E. move the first path segment in the input buffer to the end of
+			// the output buffer, including the initial "/" character(if
+			// any) and any subsequent characters up to, but not including,
+			// the next "/" character or the end of the input buffer.
+			else
+			{
+				auto position = input.find(L"/");
+
+				if (position == 0) position = input.find(L"/", position + 1);
+				if (position == std::string::npos) position = input.length();
+
+				output += input.substr(0, position);
+				input = input.substr(position);
+			}
+		}
+
+		// 3. Finally, the output buffer is returned as the result of
+		// remove_dot_segments.
+		return fs_directory / fs::path(output);
 	}
 
 	/**
@@ -834,6 +923,55 @@ namespace v8_wrapper
 			function_directory_change.Reset(isolate, v8::Local<v8::Function>::Cast(args[0]));
 		});
 
+		// fs.write(fileName: String, content: String || Uint8Array, append: boolean {optional, default: false}): void 
+		fs_module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 2)
+				throw std::exception("invalid function signature for fs.write");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for fs.write");
+
+			/////////////////////////////////////////////
+
+			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_path = get_relative_file_path(file_name);
+
+			// Whether or not we should simply append to our file
+			auto append = args.Length() > 2 && args[2]->IsBoolean() && v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+
+			/////////////////////////////////////////////
+
+			// Attempt to open a handle to the file.
+			auto file = _wfopen(file_path.c_str(), append ? L"ab" : L"wb");
+
+			// Throw an exception if we were unable to open the file.
+			if (file == nullptr)
+				throw std::exception("unable to open file handle.");
+
+			/////////////////////////////////////////////
+
+			if (args[1]->IsString())
+			{
+				// Get the utf8 value from our string.
+				v8::String::Utf8Value const utf8_string(isolate, args[1]);
+
+				// Write the contents of the string to the file.
+				fwrite(*utf8_string, sizeof(unsigned char), utf8_string.length(), file);
+			}
+			else if (args[1]->IsUint8Array())
+			{
+				// Get the uint8array buffer contents.
+				auto uint8array_buffer = args[1].As<v8::Uint8Array>()->Buffer()->GetContents();
+
+				// Write the contents of the buffer to the file.
+				fwrite(uint8array_buffer.Data(), sizeof(unsigned char), uint8array_buffer.ByteLength(), file);
+			}
+			else throw std::exception("invalid data type provided.");
+
+			// Close our handle to the file.
+			fclose(file);
+		});
+
 		// fs.read(fileName: String, asArray: bool {optional, default: false}): String || Uint8Array || null
 		fs_module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
@@ -845,18 +983,16 @@ namespace v8_wrapper
 			/////////////////////////////////////////////
 			 
 			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
-				 
-			auto file_path = get_fs_path(
-				file_name
-			); 
+			auto file_path = get_relative_file_path(file_name); 
 
 			/////////////////////////////////////////////
 
-			auto file = _wfopen(file_path.c_str(), L"r+b");
+			// Attempt to open a handle to the file.
+			auto file = _wfopen(file_path.c_str(), L"rb");
 
 			// Throw an exception if we were unable to open the file.
 			if (file == nullptr)
-				throw std::exception("invalid file name, file is not accessible.");
+				throw std::exception("unable to open file handle.");
 
 			/////////////////////////////////////////////
 
