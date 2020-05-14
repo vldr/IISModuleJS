@@ -7,6 +7,7 @@ A middleware for IIS (Internet Information Services) that allows you to harness 
 * [v8](https://github.com/v8/v8) (included precompiled library file in [releases](../../releases))
 * [rpclib](https://github.com/rpclib/rpclib) (included precompiled library file in [releases](../../releases))
 * [openssl](https://github.com/openssl/openssl) (included precompiled library file in [releases](../../releases))
+* [libcppdb](http://cppcms.com/sql/cppdb/index.html) (included precompiled library file in [releases](../../releases))
 * [httplib](https://github.com/yhirose/cpp-httplib) 
 * [v8pp](https://github.com/pmed/v8pp) 
 * [simdb](https://github.com/LiveAsynchronousVisualizedArchitecture/simdb)
