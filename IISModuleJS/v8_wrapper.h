@@ -47,14 +47,25 @@
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
+#define DISABLE_INTERNAL_POINTER_RESET
+
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
 #define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
 
 #define HTTP_CONTEXT ((IHttpContext*)args.This()->GetAlignedPointerFromInternalField(0))
 #define HTTP_REQUEST HTTP_CONTEXT->GetRequest()
 #define HTTP_RESPONSE HTTP_CONTEXT->GetResponse()
+
+#ifndef DISABLE_INTERNAL_POINTER_RESET
+
 #define RESET_INTERNAL_POINTERS http_response_object->SetAlignedPointerInInternalField(0, nullptr); \
 http_request_object->SetAlignedPointerInInternalField(0, nullptr); 
+
+#else
+
+#define RESET_INTERNAL_POINTERS
+
+#endif
 
 #define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
 #define DB_CONTEXT ((DbContext*)args.This()->GetAlignedPointerFromInternalField(0))

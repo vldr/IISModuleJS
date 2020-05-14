@@ -2223,7 +2223,7 @@ namespace v8_wrapper
 	/**
 	 * Handles a callback that is registered in JS.
 	 */
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pProvider)
+	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject)
 	{
 		if (!isolate) return 0 /* CONTINUE */;
 
@@ -2232,7 +2232,7 @@ namespace v8_wrapper
 		v8::Global<v8::Function> * callback_function = nullptr;
 
 		////////////////////////////////////////////////
-
+		 
 		switch (type)
 		{
 		case BEGIN_REQUEST:
@@ -2244,11 +2244,12 @@ namespace v8_wrapper
 		case PRE_BEGIN_REQUEST:
 			callback_function = &function_pre_begin_request;
 			break;
-		}
+		} 
 
 		////////////////////////////////////////////////
-
-		if (!callback_function || callback_function->IsEmpty()) return 0 /* CONTINUE */;
+		
+		if (!callback_function || callback_function->IsEmpty()) 
+			return 0 /* CONTINUE */;
 
 		////////////////////////////////////////////////
 
@@ -2257,9 +2258,9 @@ namespace v8_wrapper
 		v8::Isolate::Scope isolate_scope(isolate);
 		v8::HandleScope handle_scope(isolate);
 		v8::Context::Scope context_scope(context.Get(isolate));
-
+		
 		////////////////////////////////////////////////
-
+		 
 		// Clone our arguments to be given to JavaScript.
 		auto http_response_object = global_http_response_object.Get(isolate)->Clone();
 		auto http_request_object = global_http_request_object.Get(isolate)->Clone();
@@ -2268,7 +2269,7 @@ namespace v8_wrapper
 		http_response_object->SetAlignedPointerInInternalField(0, pHttpContext);
 		http_request_object->SetAlignedPointerInInternalField(0, pHttpContext);
 
-		////////////////////////////////////////////////
+		//////////////////////////////////////////////// 
 
 		auto local_function = callback_function->Get(isolate);
 
@@ -2289,11 +2290,11 @@ namespace v8_wrapper
 			argument_count = 3;
 
 			// Set our third argument to be the provider flags.
-			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pProvider)->GetFlags());
+			arguments[2] = v8pp::to_v8(isolate, ((ISendResponseProvider*)pObject)->GetFlags());
 		}
 
 		////////////////////////////////////////////////
-
+		 
 		auto result = local_function->Call(
 			isolate->GetCurrentContext(),
 			v8::Null(isolate),
@@ -2302,7 +2303,13 @@ namespace v8_wrapper
 		);
 
 		// Check if our function returned anything...
-		if (result.IsEmpty()) return 0 /* CONTINUE */;
+		if (result.IsEmpty())
+		{
+			// Reset internal pointers.
+			RESET_INTERNAL_POINTERS
+
+			return 0 /* CONTINUE */;
+		}
 
 		////////////////////////////////////////////////
 
@@ -2310,10 +2317,15 @@ namespace v8_wrapper
 		auto result_value = result.ToLocalChecked();
 
 		////////////////////////////////////////////////
-
+		
 		if (type == PRE_BEGIN_REQUEST && !result_value->IsNumber())
 		{
 			v8pp::throw_ex(isolate, "The PRE_BEGIN_REQUEST callback must return either CONTINUE or FINISH.");
+
+			////////////////////////////////////////////////
+
+			// Reset internal pointers.
+			RESET_INTERNAL_POINTERS
 
 			////////////////////////////////////////////////
 
@@ -2323,19 +2335,24 @@ namespace v8_wrapper
 		////////////////////////////////////////////////
 
 		if (result_value->IsPromise())
-		{
+		{	
 			// Get our promise object.
 			auto promise = result_value.As<v8::Promise>();
 
 			// Check if our promise is already fulfilled or rejected.
 			if (promise->State() == v8::Promise::kFulfilled || promise->State() == v8::Promise::kRejected)
 			{
+				// Reset internal pointers.
+				RESET_INTERNAL_POINTERS
+
+				////////////////////////////////////////////////
+
 				// Cast our value to a request notification...
 				return REQUEST_NOTIFICATION_STATUS(
-					v8pp::from_v8<int>(isolate, promise->Result(), 0)
-					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE
+					v8pp::from_v8<int>(isolate, promise->Result(), 0) 
+						? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE
 				);
-			}
+			}  
 
 			//////////////////////////////////////////////////////
 
@@ -2346,6 +2363,33 @@ namespace v8_wrapper
 				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0)
 					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE;
 
+#ifndef DISABLE_INTERNAL_POINTER_RESET
+				// Cast our passthrough objects as an array.
+				auto passthrough_objects = args.Data().As<v8::Array>();
+
+				// Get the context.
+				auto context = args.GetIsolate()->GetCurrentContext(); 
+
+				// Fetch our response objects.
+				auto http_response_object = passthrough_objects->Get(context, 0).ToLocalChecked().As<v8::Object>();
+				auto http_request_object = passthrough_objects->Get(context, 1).ToLocalChecked().As<v8::Object>();
+
+				// Cast our given Data,
+				auto http_context = (IHttpContext*)(
+					http_response_object->GetAlignedPointerFromInternalField(0)
+				);
+
+				// Regardless of any result,
+				// we need to indicate that the we've completed
+				// our execution to IIS.
+				http_context->IndicateCompletion(
+					REQUEST_NOTIFICATION_STATUS(request_notification_status)
+				);
+
+				// Reset internal pointers.
+				RESET_INTERNAL_POINTERS
+
+#else
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
 
@@ -2355,17 +2399,34 @@ namespace v8_wrapper
 				http_context->IndicateCompletion(
 					REQUEST_NOTIFICATION_STATUS(request_notification_status)
 				);
-			};
+#endif 
+			}; 
 
 			////////////////////////////////////////////////
+
+#ifndef DISABLE_INTERNAL_POINTER_RESET
+			// Get our current context so we can create our array object.
+			auto context = isolate->GetCurrentContext();
+
+			// Pass our objects through.
+			auto passthrough_objects = v8::Array::New(isolate, 2);
+			passthrough_objects->Set(context, 0, http_response_object);
+			passthrough_objects->Set(context, 1, http_request_object);
 
 			// Create our callback function.
 			auto function = v8::Function::New(
 				isolate->GetCurrentContext(),
 				callback,
+				passthrough_objects
+			).ToLocalChecked();
+#else
+			auto function = v8::Function::New(
+				isolate->GetCurrentContext(),
+				callback,
 				v8::External::New(isolate, pHttpContext)
 			).ToLocalChecked();
-
+#endif
+			
 			// Attach our callback function to our promise to handle both scenarios.
 			promise->Then(isolate->GetCurrentContext(), function, function);
 
@@ -2373,6 +2434,11 @@ namespace v8_wrapper
 
 			return RQ_NOTIFICATION_PENDING;
 		}
+
+		///////////////////////////////////////////
+
+		// Reset internal pointers.
+		RESET_INTERNAL_POINTERS
 
 		///////////////////////////////////////////
 
@@ -2384,12 +2450,12 @@ namespace v8_wrapper
 		 *
 		 * They represent the same action but differ by value.
 		 */
-		auto return_int_value = v8pp::from_v8<int>(isolate, result_value, 0) ?
+		auto return_int_value = v8pp::from_v8<int>(isolate, result_value, 0) ? 
 			(type == PRE_BEGIN_REQUEST ? GL_NOTIFICATION_HANDLED : RQ_NOTIFICATION_FINISH_REQUEST)
 			: RQ_NOTIFICATION_CONTINUE;
 
 		///////////////////////////////////////////
-
+		
 		return return_int_value;
 	}
 
