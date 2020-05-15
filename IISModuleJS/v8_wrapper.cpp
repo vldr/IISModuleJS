@@ -157,11 +157,11 @@ namespace v8_wrapper
 
 			// A. If the input buffer begins with a prefix of "../" or "./",
 			// then remove that prefix from the input buffer; otherwise,
-			if (input.find(L"../") == 0)
+			if (input.find(L"../", 0, 3) == 0)
 			{
 				input.replace(0, 3, L"");
 			}
-			else if (input.find(L"./") == 0)
+			else if (input.find(L"./", 0, 2) == 0)
 			{
 				input.replace(0, 2, L"");
 			}
@@ -169,7 +169,7 @@ namespace v8_wrapper
 			// B. if the input buffer begins with a prefix of "/./" or "/.",
 			// where "." is a complete path segment, then replace that
 			// prefix with "/" in the input buffer; otherwise,
-			else if (input.find(L"/./") == 0)
+			else if (input.find(L"/./", 0, 3) == 0)
 			{
 				input.replace(0, 3, L"/");
 			}
@@ -183,7 +183,7 @@ namespace v8_wrapper
 			// prefix with "/" in the input buffer and remove the last
 			// segment and its preceding "/" (if any) from the output
 			// buffer; otherwise,
-			else if (input.find(L"/../") == 0)
+			else if (input.find(L"/../", 0, 4) == 0)
 			{
 				input.replace(0, 4, L"/");
 
