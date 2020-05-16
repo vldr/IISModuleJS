@@ -139,9 +139,6 @@ namespace v8_wrapper
 
 	/**
 	* Returns the path to the filesystem directory.
-	*
-	* RFC 3986 5.2.4.
-	* https://tools.ietf.org/html/rfc3986#section-5.2.4
 	*/
 	std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input)
 	{
@@ -170,8 +167,13 @@ namespace v8_wrapper
 
 		////////////////////////////////////////////
 
-		std::wstring output;
+		std::wstring output; 
 		output.reserve(input.length());
+
+		/**
+		* RFC 3986 5.2.4.
+		* https://tools.ietf.org/html/rfc3986#section-5.2.4
+		*/
 
 		// 1. The input buffer is initialized with the now-appended path
 		// components and the output buffer is initialized to the empty
