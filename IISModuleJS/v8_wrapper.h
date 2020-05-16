@@ -384,7 +384,7 @@ namespace v8_wrapper
 	void initialize_objects();
 
 	void directory_change_callback();
-	std::experimental::filesystem::path get_relative_file_path(std::wstring input);
+	std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input);
 
 	std::experimental::filesystem::path get_path(std::wstring script);
 	void execute_file(const wchar_t * name);

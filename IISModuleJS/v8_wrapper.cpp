@@ -143,8 +143,20 @@ namespace v8_wrapper
 	* RFC 3986 5.2.4.
 	* https://tools.ietf.org/html/rfc3986#section-5.2.4
 	*/
-	std::experimental::filesystem::path get_relative_file_path(std::wstring input)
+	std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input)
 	{
+		static auto cached_paths = std::unordered_map<std::wstring, std::experimental::filesystem::path>();
+
+		auto path = cached_paths.find(raw_input);
+
+		if (path != cached_paths.end())
+		{
+			return path->second;
+		}
+
+		////////////////////////////////////////////
+
+		std::wstring input = raw_input;
 		std::wstring output;
 		output.reserve(input.length());
 
@@ -231,7 +243,10 @@ namespace v8_wrapper
 
 		// 3. Finally, the output buffer is returned as the result of
 		// remove_dot_segments.
-		return fs_directory / fs::path(output);
+		cached_paths[raw_input] = fs_directory / fs::path(output);
+
+		// Return the reference.
+		return cached_paths[raw_input];
 	}
 
 	/**
