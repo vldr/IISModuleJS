@@ -13,7 +13,8 @@
 #include <string> 
 #include <Shlobj.h>
 #include <httplib/httplib.h>
-
+#include <Shlwapi.h>
+ 
 #pragma comment(lib, "sqlite3.lib")
 
 #ifdef _DEBUG
@@ -33,6 +34,7 @@
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "libcrypto.lib")
 #pragma comment(lib, "libssl.lib")
+#pragma comment(lib, "Shlwapi.lib")
 
 #include <cassert>
 #include <libplatform/libplatform.h>
@@ -98,6 +100,7 @@ namespace v8_wrapper
 		BOOL,
 		BINARY
 	};
+
 
 	/**
 	 * A class which allows the ability to allocate an

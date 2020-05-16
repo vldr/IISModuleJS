@@ -295,7 +295,8 @@ namespace v8_wrapper
 			std::transform(
 				names, names + count, new_vector.begin(), [](const char* name) {
 					return v8::Eternal<v8::Name>(isolate, v8pp::to_v8(isolate, name));
-				});
+				}
+			);
 
 			eternal_name_cache_[lookup_key] = std::move(new_vector);
 			vector = &eternal_name_cache_[lookup_key];
@@ -835,7 +836,7 @@ namespace v8_wrapper
 
 			SerializerDelegate serializer_delegate(args.GetIsolate());
 			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
-			
+			 
 			auto result = serializer.WriteValue(
 				args.GetIsolate()->GetCurrentContext(),
 				args[1]
@@ -921,6 +922,71 @@ namespace v8_wrapper
 			////////////////////////////////////////////////
 
 			function_directory_change.Reset(isolate, v8::Local<v8::Function>::Cast(args[0]));
+		});
+
+		// fs.copy(existingFileName: String, newFileName: String, overwrite: boolean {optional, default: false}): boolean 
+		fs_module.set("copy", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 2)
+				throw std::exception("invalid function signature for fs.copy");
+
+			if (!args[0]->IsString() || !args[1]->IsString())
+				throw std::exception("invalid first two parameters, must be both a string for fs.copy");
+
+			/////////////////////////////////////////////
+
+			auto existing_file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto existing_file_path = get_relative_file_path(existing_file_name);
+			
+			auto new_file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[1]);
+			auto new_file_path = get_relative_file_path(new_file_name);
+
+			auto overwrite = args.Length() > 2 && args[2]->IsBoolean() && v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+
+			/////////////////////////////////////////////
+
+			RETURN_THIS(
+				(bool)CopyFileW(existing_file_path.c_str(), new_file_path.c_str(), !overwrite)
+			)
+		});
+
+		// fs.exists(fileName: String): boolean 
+		fs_module.set("exists", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for fs.exists");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for fs.exists");
+
+			/////////////////////////////////////////////
+
+			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_path = get_relative_file_path(file_name);
+
+			/////////////////////////////////////////////
+
+			RETURN_THIS(
+				(bool)PathFileExistsW(file_path.c_str())
+			)
+		});
+
+		// fs.delete(fileName: String): boolean 
+		fs_module.set("delete", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for fs.delete");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for fs.delete");
+
+			/////////////////////////////////////////////
+
+			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_path = get_relative_file_path(file_name);
+
+			/////////////////////////////////////////////
+
+			RETURN_THIS(
+				(bool)DeleteFileW(file_path.c_str())
+			)
 		});
 
 		// fs.write(fileName: String, content: String || Uint8Array, append: boolean {optional, default: false}): void 
