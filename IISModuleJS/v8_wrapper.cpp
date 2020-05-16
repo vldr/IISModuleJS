@@ -157,6 +157,19 @@ namespace v8_wrapper
 		////////////////////////////////////////////
 
 		std::wstring input = raw_input;
+
+		// Windows backend protection (https://tools.ietf.org/html/rfc3986#section-7.3):
+		auto pos = input.find(L"\\", 0);
+
+		// Loop until there isn't any \ characters.
+		while (pos != std::string::npos)
+		{
+			input.replace(pos, 1, L"/");
+			pos = input.find(L"\\", 0);
+		}
+
+		////////////////////////////////////////////
+
 		std::wstring output;
 		output.reserve(input.length());
 
