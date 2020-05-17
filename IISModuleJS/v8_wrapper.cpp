@@ -38,6 +38,14 @@ namespace v8_wrapper
 		>
 	> eternal_name_cache_;
 
+	// A list containing all the loaded scripts to watch.
+	std::vector<
+		std::pair<
+			std::experimental::filesystem::path, 
+			fs::file_time_type
+		>
+	> loaded_scripts;
+
 	// Simdb database use for ipc.get and ipc.set
 	simdb db;
 
@@ -102,6 +110,8 @@ namespace v8_wrapper
 		function_directory_change.Reset();
 		function_send_response.Reset();
 		function_pre_begin_request.Reset();
+
+		loaded_scripts.clear();
 
 		// Reset our context...
 		context.Reset(isolate, create_shell_context());
@@ -366,6 +376,16 @@ namespace v8_wrapper
 
 		auto script_path = get_path(script_name);
 
+		// Add the root script with a default file time type so the file gets initially loaded.
+		loaded_scripts.push_back(
+			std::make_pair(
+				script_path,
+				fs::file_time_type()
+			)
+		);
+
+		//////////////////////////////////////////
+
 		fs_directory = get_path() / app_pool_folder_name;
 
 		//////////////////////////////////////////
@@ -387,21 +407,30 @@ namespace v8_wrapper
 
 		//////////////////////////////////////////
 
-		fs::file_time_type last_write;
-		std::error_code ec; 
+		// Wait for variable used for the find first change notification.
 		DWORD wait_for = 0; 
+		 
+		// The error code used for checking the last write of each loaded script.
+		std::error_code error_code;
 
 		for (;;)
 		{ 
-			// Check if our file exists, and last write has changed.
-			if (last_write != fs::last_write_time(script_path, ec) && !ec)
+			// Loop through all our loaded scripts.
+			for (auto script = loaded_scripts.begin(); script != loaded_scripts.end(); script++)
 			{
-				last_write = fs::last_write_time(script_path);
-				vs_printf("Resetting engine and loading \"%ws\" script...\n", script_name.c_str());
+				// Check if one of the the scripts has been modified.
+				if (script->second != fs::last_write_time(script->first, error_code) && !error_code)
+				{
+					// Reset the engine if so.
+					reset_engine();
 
-				reset_engine();
-				execute_file(script_path.c_str());
-			}   
+					// Reload the main script.
+					execute_file(script_path.c_str());
+
+					// Break out of the loop.
+					break;
+				}
+			}
 			 
 			//////////////////////////////////////////
 
@@ -2805,6 +2834,20 @@ namespace v8_wrapper
 		v8::Isolate::Scope isolate_scope(isolate);
 		v8::HandleScope handle_scope(isolate);
 		v8::Context::Scope context_scope(context.Get(isolate));
+
+		/////////////////////////////////////////////
+
+		auto script_path = get_path(name);
+
+		loaded_scripts.push_back(
+			std::make_pair(
+				script_path,
+				fs::last_write_time(script_path)
+			)
+		);
+
+		/////////////////////////////////////////////
+
 
 		FILE* file = _wfopen(name, L"rb");
 		if (file == nullptr) return;
