@@ -300,15 +300,13 @@ namespace v8_wrapper
 		CoTaskMemFree(known_folder);
 
 		//////////////////////////////////////////
-
+		 
 		if (!script.empty())
 		{
-			// Create our script path.
-			fs::path script_path = script;
-
-			// Append our script's file name.
-			path.append(script_path.filename());
-		}
+			path.append(
+				fs::path(script).filename()
+			);
+		} 
 
 		/////////////////////////////////////////
 		
@@ -365,7 +363,7 @@ namespace v8_wrapper
 		rpc_server.bind("execute", [](std::string script) {
 			reset_engine();
 			
-			return execute_string((char*)script.c_str(), true, true);
+			return execute_string("(rpc)", (char*)script.c_str());
 		});
 
 		// Run our rpc server asynchronously.
@@ -425,7 +423,7 @@ namespace v8_wrapper
 					reset_engine();
 
 					// Reload the main script.
-					execute_file(script_path.c_str());
+					execute_file(script_path);
 
 					// Break out of the loop.
 					break;
@@ -502,11 +500,13 @@ namespace v8_wrapper
 				// Get the name of the file provided by the user.
 				auto name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[i]);
 
-				// Get the path with our file name.
+				// Get the path to the file.
 				auto path = get_path(name);
 
 				// Execute the file in v8.
-				execute_file(path.c_str());
+				execute_file(
+					path
+				);
 			}
 		});
 
@@ -2396,6 +2396,20 @@ namespace v8_wrapper
 				)
 			});
 
+			// getPath(): String
+			module.set("getPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
+
+				RETURN_THIS(
+					std::wstring(
+						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pAbsPath,
+						(HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.AbsPathLength 
+						+ HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.QueryStringLength)
+						/ sizeof(wchar_t)
+					)
+				)
+			});
+
 			// getHost(): String
 			module.set("getHost", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getHost");
@@ -2760,7 +2774,7 @@ namespace v8_wrapper
 	/**
 	 * Executes a string containing JavaScript.
 	 */
-	bool execute_string(char * str, bool print_result, bool report_exceptions)
+	bool execute_string(const char * script_name, char * str)
 	{
 		// Setup context...
 		v8::Locker locker(isolate);
@@ -2771,7 +2785,7 @@ namespace v8_wrapper
 		// Enter the execution environment before evaluating any code.
 		v8::Local<v8::String> name(
 			v8::String::NewFromUtf8(
-				isolate, "(shell)", 
+				isolate, script_name,
 				v8::NewStringType::kNormal
 			).ToLocalChecked()
 		);
@@ -2789,7 +2803,7 @@ namespace v8_wrapper
 		if (!v8::Script::Compile(context, source, &origin).ToLocal(&script))
 		{
 			// Print errors that happened during compilation.
-			if (report_exceptions) report_exception(&try_catch);
+			report_exception(&try_catch);
 
 			// Return false here...
 			return false;
@@ -2804,7 +2818,7 @@ namespace v8_wrapper
 			assert(try_catch.HasCaught());
 
 			// Print errors that happened during execution.
-			if (report_exceptions) report_exception(&try_catch);
+			report_exception(&try_catch);
 
 			return true;
 		}
@@ -2812,14 +2826,6 @@ namespace v8_wrapper
 		//////////////////////////////////////////////////
 
 		assert(!try_catch.HasCaught());
-		if (print_result && !result->IsUndefined()) {
-			// If all went well and the result wasn't undefined then print
-			// the returned value.
-			v8::String::Utf8Value str(isolate, result);
-			const char* cstr = c_string(str);
-
-			vs_printf("%s\n", cstr);
-		}
 
 		return true;
 	}
@@ -2828,7 +2834,7 @@ namespace v8_wrapper
 	 * Executes a file by reading it's contents and 
 	 * passing it to execute_string.
 	 */
-	void execute_file(const wchar_t * name)
+	void execute_file(std::experimental::filesystem::path & script_path)
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -2837,9 +2843,8 @@ namespace v8_wrapper
 
 		/////////////////////////////////////////////
 
-		auto script_path = get_path(name);
-
-		loaded_scripts.push_back(
+		// Push our script to the loaded scripts
+		loaded_scripts.push_back( 
 			std::make_pair(
 				script_path,
 				fs::last_write_time(script_path)
@@ -2848,34 +2853,73 @@ namespace v8_wrapper
 
 		/////////////////////////////////////////////
 
+		// Attempt to open a file handle.
+		auto file = _wfopen(script_path.c_str(), L"rb");
 
-		FILE* file = _wfopen(name, L"rb");
-		if (file == nullptr) return;
+		// Check if we were successful in opening a file handle.
+		if (file == nullptr) 
+		{
+			// Throw a javascript exception.
+			isolate->ThrowException(
+				v8::String::NewFromUtf8(isolate, "failed to open a handle to the script file", v8::NewStringType::kNormal)
+					.ToLocalChecked()
+			);
+			 
+			// Return here.
+			return;
+		} 
 
+		/////////////////////////////////////////////
+
+		// Check the file size.
 		fseek(file, 0, SEEK_END);
-		size_t size = ftell(file);
-		rewind(file);
+		size_t size = ftell(file); 
+		rewind(file); 
 
-		char* chars = new char[size + 1];
-		chars[size] = '\0';
-		for (size_t i = 0; i < size;) {
-			i += fread(&chars[i], 1, size - i, file);
-			if (ferror(file)) {
-				fclose(file);
-				return;
-			}
+		/////////////////////////////////////////////
+
+		// Create a unqiue pointer to our char array.
+		auto chars_unique_ptr = std::make_unique<char[]>(size + 1);
+
+		// Get the raw pointer to the chars.
+		auto chars = chars_unique_ptr.get();
+
+		// Place a terminating byte at the end;
+		chars[size] = 0;
+
+		// Attempt to read the entire file into our chars array.
+		fread(chars, sizeof(char), size, file);
+
+		// Check if we were successful in reading our file.
+		if (ferror(file))
+		{
+			isolate->ThrowException(
+				v8::String::NewFromUtf8(isolate, "failed to read the contents of the script file", v8::NewStringType::kNormal)
+				.ToLocalChecked()
+			);
+
+			// Close our file handle.
+			fclose(file);
+
+			return;
 		}
+
+		// Close our file handle.
 		fclose(file);
 
-		if (!execute_string(chars, true, true)) {
-			isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Error executing file",
-					v8::NewStringType::kNormal).ToLocalChecked());
+		// Attempt to execute our script.
+		if (!execute_string(script_path.filename().u8string().c_str(), chars))
+		{
+			isolate->ThrowException(
+				v8::String::NewFromUtf8(isolate, "failed to execute script file", v8::NewStringType::kNormal)
+					.ToLocalChecked()
+			);
+
+			return;
 		}
 
-		delete[] chars;
-
-		vs_printf("Executed %ws script...\n", name);
-		fflush(stdout);
+		// Inform the user that we've loaded our script successfully.
+		vs_printf("Loaded %ws script...\n", script_path.filename().c_str());
 	}
 
 	/**

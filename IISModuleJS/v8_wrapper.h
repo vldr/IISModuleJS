@@ -387,11 +387,11 @@ namespace v8_wrapper
 	std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input);
 
 	std::experimental::filesystem::path get_path(std::wstring script);
-	void execute_file(const wchar_t * name);
+	void execute_file(std::experimental::filesystem::path & script_path);
 	void report_exception(v8::TryCatch * try_catch);
 
 	std::string sock_to_ip(PSOCKADDR address);
-	bool execute_string(char * str, bool print_result, bool report_exceptions);
+	bool execute_string(const char * script_name, char * str);
 	const char* c_string(v8::String::Utf8Value& value);
 	int vs_printf(const char *format, ...);
 
