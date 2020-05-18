@@ -74,7 +74,7 @@ namespace v8_wrapper
 			v8::V8::InitializeICU(); 
 			v8::V8::Initialize();
 #ifdef _DEBUG
-			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --track-retaining-path --trace-opt --expose-gc");
+			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --track-retaining-path --expose-gc");
 #else
 			v8::V8::SetFlagsFromString("--always-opt"); 
 #endif
@@ -1326,7 +1326,7 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				DB_CONTEXT->statement.exec();
-			}); 
+			});  
 
 			// query(): void
 			module.set("query", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
@@ -1337,13 +1337,17 @@ namespace v8_wrapper
 				DB_CONTEXT->result = DB_CONTEXT->statement.query();
 			}); 
 
-			// queryRow(): void
+			// queryRow(): boolean
 			module.set("queryRow", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
 
 				/////////////////////////////////////////////
 
 				DB_CONTEXT->result = DB_CONTEXT->statement.row();
+				
+				RETURN_THIS(
+					!DB_CONTEXT->result.empty()
+				)
 			});
 			 
 			// close(): void
@@ -1427,7 +1431,7 @@ namespace v8_wrapper
 						input_type ? DB_CONTEXT->result.get<std::string>(input_col_index)
 						: DB_CONTEXT->result.get<std::string>(input_col_name)
 					)
-					break;
+					break; 
 				case DB_DATA_TYPES::INTEGER:
 					RETURN_THIS(
 						input_type ? DB_CONTEXT->result.get<int>(input_col_index)
