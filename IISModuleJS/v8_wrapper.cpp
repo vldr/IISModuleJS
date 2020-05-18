@@ -431,12 +431,12 @@ namespace v8_wrapper
 			}
 			 
 			//////////////////////////////////////////
-
+			 
 			if (wait_for != WAIT_TIMEOUT) 
 			{
 				change_notify_handle = FindFirstChangeNotificationW(
 					fs_directory.c_str(),
-					FALSE,
+					TRUE,
 					FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE
 				);
 			}
