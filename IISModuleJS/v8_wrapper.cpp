@@ -1253,6 +1253,173 @@ namespace v8_wrapper
 
 		////////////////////////////////////////
 
+		// crypto Property  
+		v8pp::module crypto_module(isolate);
+
+		// crypto.bcrypt(input: String, workload: Integer {32-bit only, optional, default: 12}): Promise<String>
+		crypto_module.set("bcrypt", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for crypto.bcrypt");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for crypto.bcrypt");
+
+			/////////////////////////////////////////////
+
+			auto input = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+			/////////////////////////////////////////////
+
+			// Setup our default workload.
+			int workload = 12;
+
+			// Check if we were provided a custom workload value.
+			if (args.Length() > 1 && args[1]->IsInt32())
+				workload = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
+
+			/////////////////////////////////////////////
+
+			// Setup a resolver.
+			auto resolver = v8::Promise::Resolver::New(
+				args.GetIsolate()->GetCurrentContext()
+			).ToLocalChecked();
+
+			// Setup a global resolver object.
+			auto resolver_global = v8::Global<v8::Promise::Resolver>(
+				args.GetIsolate(), resolver
+			);
+
+			/////////////////////////////////////////////
+
+			// Set the return value to our promise.
+			args.GetReturnValue().Set(
+				resolver_global.Get(isolate)->GetPromise()
+			);
+
+			// Our scrypt thread.
+			std::thread scrypt_thread([workload, input_value = std::move(input), resolver = std::move(resolver_global)] {
+				char salt[BCRYPT_HASHSIZE];
+				char hash[BCRYPT_HASHSIZE];
+
+				// Attempt to generate a salt.
+				int result = bcrypt_gensalt(workload, salt);
+
+				// Check if we were unable to generate the salt.
+				if (result != 0)
+				{
+					v8::Locker locker(isolate);
+					v8::Isolate::Scope isolate_scope(isolate);
+					v8::HandleScope handle_scope(isolate);
+					v8::Context::Scope context_scope(context.Get(isolate));
+
+					resolver.Get(isolate)->Reject(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, "bcrypt: can not generate salt")
+					);
+
+					return;
+				}
+
+				/////////////////////////////////////////////
+
+				// Attempt to hash the password.
+				result = bcrypt_hashpw(input_value.c_str(), salt, hash);
+
+				// Check if we were unable to generate the hash.
+				if (result != 0)
+				{
+					v8::Locker locker(isolate);
+					v8::Isolate::Scope isolate_scope(isolate);
+					v8::HandleScope handle_scope(isolate);
+					v8::Context::Scope context_scope(context.Get(isolate));
+
+					resolver.Get(isolate)->Reject(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, "bcrypt: can not generate hash")
+					);
+
+					return;
+				}
+
+				/////////////////////////////////////////////
+
+				// If everything went well then send off the proper value.
+
+				v8::Locker locker(isolate);
+				v8::Isolate::Scope isolate_scope(isolate);
+				v8::HandleScope handle_scope(isolate);
+				v8::Context::Scope context_scope(context.Get(isolate));
+
+				// Resolve our promise.
+				resolver.Get(isolate)->Resolve(
+					isolate->GetCurrentContext(),
+					v8pp::to_v8(isolate, hash, BCRYPT_HASHSIZE)
+				);
+			}); 
+
+			scrypt_thread.detach();
+		});
+
+		// crypto.bcryptCompare(password: String, hash: String): Promise<bool>
+		crypto_module.set("bcryptCompare", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 2)
+				throw std::exception("invalid function signature for crypto.bcryptCompare");
+
+			if (!args[0]->IsString() || !args[1]->IsString())
+				throw std::exception("invalid first parameter, must be a string for crypto.bcryptCompare");
+
+			/////////////////////////////////////////////
+
+			auto password = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			auto hash = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+
+			/////////////////////////////////////////////
+
+			// Setup a resolver.
+			auto resolver = v8::Promise::Resolver::New(
+				args.GetIsolate()->GetCurrentContext()
+			).ToLocalChecked();
+
+			// Setup a global resolver object.
+			auto resolver_global = v8::Global<v8::Promise::Resolver>(
+				args.GetIsolate(), resolver
+			);
+
+			/////////////////////////////////////////////
+
+			// Set the return value to our promise.
+			args.GetReturnValue().Set(
+				resolver_global.Get(isolate)->GetPromise()
+			);
+
+			// Our scrypt thread.
+			std::thread scrypt_thread([
+				input_password = std::move(password),
+				input_hash = std::move(hash),
+				resolver = std::move(resolver_global)
+			]  
+			{
+				bool result = (bcrypt_checkpw(input_password.c_str(), input_hash.c_str()) == 0);
+
+				/////////////////////////////////////////////
+
+				v8::Locker locker(isolate);
+				v8::Isolate::Scope isolate_scope(isolate);
+				v8::HandleScope handle_scope(isolate);
+				v8::Context::Scope context_scope(context.Get(isolate));
+
+				// Resolve our promise.
+				resolver.Get(isolate)->Resolve(
+					isolate->GetCurrentContext(),
+					v8pp::to_v8(isolate, result)
+				);
+			}); 
+
+			scrypt_thread.detach();
+		});
+
+		////////////////////////////////////////
+
 		// ipc Object
 		global.set_const("ipc", ipc_module);
 
@@ -1264,6 +1431,9 @@ namespace v8_wrapper
 
 		// db Object
 		global.set_const("db", db_module);
+		
+		// crypto Object
+		global.set_const("crypto", crypto_module);
 
 		////////////////////////////////////////
 

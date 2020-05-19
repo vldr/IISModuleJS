@@ -5,6 +5,8 @@
 #define _WINSOCKAPI_
 #define NOMINMAX
 #define CPPHTTPLIB_OPENSSL_SUPPORT
+#define BCRYPT_HASHSIZE	(64)
+
 #include <windows.h>
 #include <sal.h>
 #include <ws2tcpip.h>
@@ -24,8 +26,10 @@
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "libcppdb.lib")
+#pragma comment(lib, "bcrypt.64.lib")
 #else
 #pragma comment(lib, "v8_monolith.release.64.lib")
+#pragma comment(lib, "bcrypt.release.64.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "libcppdb.release.lib")
@@ -42,6 +46,7 @@
 #include <v8pp/class.hpp>
 #include <v8pp/module.hpp>
 #include <cppdb/frontend.h>
+#include <bcrypt/bcrypt.h>
 #include <thread>
 #include <iostream>
 #include <sstream>
