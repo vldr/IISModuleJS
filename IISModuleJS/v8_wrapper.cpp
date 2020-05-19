@@ -1256,8 +1256,14 @@ namespace v8_wrapper
 		// crypto Property  
 		v8pp::module crypto_module(isolate);
 
-		// crypto.bcrypt(input: String, workload: Integer {32-bit only, optional, default: 12}): Promise<String>
-		crypto_module.set("bcrypt", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		// bcrypt Module
+		v8pp::module bcrypt_module(isolate);
+
+		// Add our bcrypt module to the crypto module.
+		crypto_module.set_const("bcrypt", bcrypt_module);
+
+		// crypto.bcrypt.hash(input: String, workload: Integer {32-bit only, optional, default: 12}): Promise<String>
+		bcrypt_module.set("hash", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for crypto.bcrypt");
 
@@ -1296,8 +1302,7 @@ namespace v8_wrapper
 				resolver_global.Get(isolate)->GetPromise()
 			);
 
-			// Our scrypt thread.
-			std::thread scrypt_thread([workload, input_value = std::move(input), resolver = std::move(resolver_global)] {
+			std::thread bcrypt_thread([workload, input_value = std::move(input), resolver = std::move(resolver_global)] {
 				char salt[BCRYPT_HASHSIZE];
 				char hash[BCRYPT_HASHSIZE];
 
@@ -1343,8 +1348,6 @@ namespace v8_wrapper
 
 				/////////////////////////////////////////////
 
-				// If everything went well then send off the proper value.
-
 				v8::Locker locker(isolate);
 				v8::Isolate::Scope isolate_scope(isolate);
 				v8::HandleScope handle_scope(isolate);
@@ -1357,11 +1360,11 @@ namespace v8_wrapper
 				);
 			}); 
 
-			scrypt_thread.detach();
+			bcrypt_thread.detach();
 		});
 
-		// crypto.bcryptCompare(password: String, hash: String): Promise<bool>
-		crypto_module.set("bcryptCompare", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		// crypto.bcrypt.check(password: String, hash: String): Promise<bool>
+		bcrypt_module.set("check", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 2)
 				throw std::exception("invalid function signature for crypto.bcryptCompare");
 
@@ -1392,8 +1395,7 @@ namespace v8_wrapper
 				resolver_global.Get(isolate)->GetPromise()
 			);
 
-			// Our scrypt thread.
-			std::thread scrypt_thread([
+			std::thread bcrypt_thread([
 				input_password = std::move(password),
 				input_hash = std::move(hash),
 				resolver = std::move(resolver_global)
@@ -1415,8 +1417,8 @@ namespace v8_wrapper
 				);
 			}); 
 
-			scrypt_thread.detach();
-		});
+			bcrypt_thread.detach();
+		}); 
 
 		////////////////////////////////////////
 
