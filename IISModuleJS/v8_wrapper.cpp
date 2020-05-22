@@ -46,6 +46,13 @@ namespace v8_wrapper
 		>
 	> loaded_scripts;
 
+	// All variables needed for keeping track of the number of threads
+	// launched, we wish to keep it below a certain threshold as to
+	// not overload the machine.
+	int thread_count = 0;
+	std::condition_variable thread_count_cv;
+	std::mutex thread_count_lock;
+
 	// Simdb database use for ipc.get and ipc.set
 	simdb db;
 
@@ -509,7 +516,7 @@ namespace v8_wrapper
 				);
 			}
 		});
-
+	
 		// [SIGNATURE 1]
 		// register(
 		//     type: CALLBACK_TYPES (Number),
@@ -709,8 +716,18 @@ namespace v8_wrapper
 				}
 			} 
 
-			////////////////////////////////////
-			
+			/////////////////////////////////////////////
+
+			// Wait until threads free up.
+			{
+				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+				thread_count++;
+			} 
+
+			/////////////////////////////////////////////
+
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(args.GetIsolate()->GetCurrentContext()).ToLocalChecked();
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(args.GetIsolate(), resolver);
@@ -805,10 +822,21 @@ namespace v8_wrapper
 					{
 						response = client.Patch(fetch_request.path.c_str(), fetch_request.headers, fetch_request.body, nullptr);
 					}
+				} 
+
+				////////////////////////////////////////////
+
+				// Decrement out thread count.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count--;
 				}
 
-				//////////////////////////////////////////
+				// Notify all waitees.
+				thread_count_cv.notify_one();
 				
+				////////////////////////////////////////////
+
 				// We should only lock once the request has finished.
 				v8::Locker locker(isolate);
 				v8::Isolate::Scope isolate_scope(isolate);
@@ -1255,7 +1283,7 @@ namespace v8_wrapper
 
 		// crypto Property  
 		v8pp::module crypto_module(isolate);
-
+		 
 		// bcrypt Module
 		v8pp::module bcrypt_module(isolate);
 
@@ -1282,6 +1310,16 @@ namespace v8_wrapper
 			// Check if we were provided a custom workload value.
 			if (args.Length() > 1 && args[1]->IsInt32())
 				workload = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
+
+			/////////////////////////////////////////////
+
+			// Wait until threads free up.
+			{
+				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+				thread_count++;
+			}
 
 			/////////////////////////////////////////////
 
@@ -1312,17 +1350,7 @@ namespace v8_wrapper
 				// Check if we were unable to generate the salt.
 				if (result != 0)
 				{
-					v8::Locker locker(isolate);
-					v8::Isolate::Scope isolate_scope(isolate);
-					v8::HandleScope handle_scope(isolate);
-					v8::Context::Scope context_scope(context.Get(isolate));
-
-					resolver.Get(isolate)->Reject(
-						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, "bcrypt: can not generate salt")
-					);
-
-					return;
+					goto finish;
 				}
 
 				/////////////////////////////////////////////
@@ -1333,18 +1361,21 @@ namespace v8_wrapper
 				// Check if we were unable to generate the hash.
 				if (result != 0)
 				{
-					v8::Locker locker(isolate);
-					v8::Isolate::Scope isolate_scope(isolate);
-					v8::HandleScope handle_scope(isolate);
-					v8::Context::Scope context_scope(context.Get(isolate));
-
-					resolver.Get(isolate)->Reject(
-						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, "bcrypt: can not generate hash")
-					);
-
-					return;
+					goto finish;
 				}
+
+				/////////////////////////////////////////////
+
+			finish:
+
+				// Decrement out thread count.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count--;
+				}
+				 
+				// Notify all waitees.
+				thread_count_cv.notify_one();
 
 				/////////////////////////////////////////////
 
@@ -1353,11 +1384,21 @@ namespace v8_wrapper
 				v8::HandleScope handle_scope(isolate);
 				v8::Context::Scope context_scope(context.Get(isolate));
 
-				// Resolve our promise.
-				resolver.Get(isolate)->Resolve(
-					isolate->GetCurrentContext(),
-					v8pp::to_v8(isolate, hash, BCRYPT_HASHSIZE)
-				);
+				if (result != 0)
+				{
+					resolver.Get(isolate)->Reject(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, "failed to generate bcrypt hash.")
+					);
+				}
+				else
+				{
+					// Resolve our promise.
+					resolver.Get(isolate)->Resolve(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, hash, BCRYPT_HASHSIZE)
+					);
+				}
 			}); 
 
 			bcrypt_thread.detach();
@@ -1375,6 +1416,16 @@ namespace v8_wrapper
 
 			auto password = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 			auto hash = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+
+			/////////////////////////////////////////////
+
+			// Wait until threads free up.
+			{
+				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+				thread_count++;
+			}
 
 			/////////////////////////////////////////////
 
@@ -1402,6 +1453,17 @@ namespace v8_wrapper
 			]  
 			{
 				bool result = (bcrypt_checkpw(input_password.c_str(), input_hash.c_str()) == 0);
+
+				////////////////////////////////////////////
+
+				// Decrement out thread count.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count--;
+				}
+
+				// Notify all waitees.
+				thread_count_cv.notify_one();
 
 				/////////////////////////////////////////////
 
@@ -1491,8 +1553,90 @@ namespace v8_wrapper
 				DB_CONTEXT->statement.reset();
 			});
 
-			// exec(): void
+			// exec(): Promise<void>
 			module.set("exec", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for exec");
+
+				/////////////////////////////////////////////
+
+				// Wait until threads free up.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+					thread_count++; 
+				}
+
+				/////////////////////////////////////////////
+
+				// Setup a resolver.
+				auto resolver = v8::Promise::Resolver::New(
+					args.GetIsolate()->GetCurrentContext()
+				).ToLocalChecked();
+
+				// Setup a global resolver object.
+				auto resolver_global = v8::Global<v8::Promise::Resolver>(
+					args.GetIsolate(), resolver
+				);
+
+				/////////////////////////////////////////////
+
+				// Set the return value to our promise.
+				args.GetReturnValue().Set(
+					resolver_global.Get(isolate)->GetPromise()
+				);
+
+				std::thread db_thread([db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
+					std::string error_message;
+
+					try 
+					{
+						db_context->statement.exec();
+					} 
+					catch (std::exception const &e) 
+					{
+						error_message = e.what();
+					}
+
+					/////////////////////////////////////////////
+
+					// Decrement out thread count.
+					{
+						auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+						thread_count--;
+					} 
+
+					// Notify all waitees.
+					thread_count_cv.notify_one();
+
+					/////////////////////////////////////////////
+
+					v8::Locker locker(isolate);
+					v8::Isolate::Scope isolate_scope(isolate);
+					v8::HandleScope handle_scope(isolate);
+					v8::Context::Scope context_scope(context.Get(isolate));
+
+					if (error_message.empty())
+					{
+						resolver.Get(isolate)->Resolve(
+							isolate->GetCurrentContext(),
+							v8::Undefined(isolate)
+						);
+					}
+					else
+					{
+						resolver.Get(isolate)->Reject(
+							isolate->GetCurrentContext(),
+							v8pp::to_v8(isolate, error_message)
+						);
+					}
+				});
+
+				db_thread.detach();
+			});
+
+			// execSync(): void
+			module.set("execSync", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for exec");
 
 				/////////////////////////////////////////////
@@ -1500,8 +1644,90 @@ namespace v8_wrapper
 				DB_CONTEXT->statement.exec();
 			});  
 
-			// query(): void
+			// query(): Promise<void>
 			module.set("query", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for query");
+
+				/////////////////////////////////////////////
+
+				// Wait until threads free up.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+					thread_count++;
+				}
+
+				/////////////////////////////////////////////
+
+				// Setup a resolver.
+				auto resolver = v8::Promise::Resolver::New(
+					args.GetIsolate()->GetCurrentContext()
+				).ToLocalChecked();
+
+				// Setup a global resolver object.
+				auto resolver_global = v8::Global<v8::Promise::Resolver>(
+					args.GetIsolate(), resolver
+				);
+
+				/////////////////////////////////////////////
+
+				// Set the return value to our promise.
+				args.GetReturnValue().Set(
+					resolver_global.Get(isolate)->GetPromise()
+				);
+
+				std::thread db_thread([db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
+					std::string error_message;
+
+					try 
+					{
+						db_context->result = db_context->statement.query();
+					} 
+					catch (std::exception const &e) 
+					{
+						error_message = e.what();
+					}
+
+					/////////////////////////////////////////////
+
+					// Decrement out thread count.
+					{
+						auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+						thread_count--;
+					}
+
+					// Notify all waitees.
+					thread_count_cv.notify_one();
+
+					/////////////////////////////////////////////
+
+					v8::Locker locker(isolate);
+					v8::Isolate::Scope isolate_scope(isolate);
+					v8::HandleScope handle_scope(isolate);
+					v8::Context::Scope context_scope(context.Get(isolate));
+
+					if (error_message.empty())
+					{
+						resolver.Get(isolate)->Resolve(
+							isolate->GetCurrentContext(),
+							v8::Undefined(isolate)
+						);
+					}
+					else
+					{
+						resolver.Get(isolate)->Reject(
+							isolate->GetCurrentContext(),
+							v8pp::to_v8(isolate, error_message)
+						);
+					}
+				});
+
+				db_thread.detach();
+			}); 
+
+			// querySync(): void
+			module.set("querySync", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for query");
 				 
 				/////////////////////////////////////////////
@@ -1509,8 +1735,90 @@ namespace v8_wrapper
 				DB_CONTEXT->result = DB_CONTEXT->statement.query();
 			}); 
 
-			// queryRow(): boolean
+			// queryRow(): Promise<boolean>
 			module.set("queryRow", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
+
+				/////////////////////////////////////////////
+
+				// Wait until threads free up.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+					thread_count++;
+				}
+
+				/////////////////////////////////////////////
+
+				// Setup a resolver.
+				auto resolver = v8::Promise::Resolver::New(
+					args.GetIsolate()->GetCurrentContext()
+				).ToLocalChecked();
+
+				// Setup a global resolver object.
+				auto resolver_global = v8::Global<v8::Promise::Resolver>(
+					args.GetIsolate(), resolver
+				);
+
+				/////////////////////////////////////////////
+
+				// Set the return value to our promise.
+				args.GetReturnValue().Set(
+					resolver_global.Get(isolate)->GetPromise()
+				);
+
+				std::thread db_thread([db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
+					std::string error_message;
+
+					try 
+					{
+						db_context->result = db_context->statement.row();
+					} 
+					catch (std::exception const &e) 
+					{
+						error_message = e.what();
+					}
+
+					/////////////////////////////////////////////
+
+					// Decrement out thread count.
+					{
+						auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+						thread_count--;
+					}
+
+					// Notify all waitees.
+					thread_count_cv.notify_one();
+
+					/////////////////////////////////////////////
+
+					v8::Locker locker(isolate);
+					v8::Isolate::Scope isolate_scope(isolate);
+					v8::HandleScope handle_scope(isolate);
+					v8::Context::Scope context_scope(context.Get(isolate));
+
+					if (error_message.empty())
+					{
+						resolver.Get(isolate)->Resolve(
+							isolate->GetCurrentContext(),
+							v8pp::to_v8(isolate, !db_context->result.empty())
+						);
+					}
+					else
+					{
+						resolver.Get(isolate)->Reject(
+							isolate->GetCurrentContext(),
+							v8pp::to_v8(isolate, error_message)
+						);
+					}
+				});
+
+				db_thread.detach();
+			});
+			
+			// queryRowSync(): boolean
+			module.set("queryRowSync", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
 
 				/////////////////////////////////////////////

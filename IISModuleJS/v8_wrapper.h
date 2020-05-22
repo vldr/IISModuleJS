@@ -6,6 +6,7 @@
 #define NOMINMAX
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #define BCRYPT_HASHSIZE	(64)
+#define MAX_THREADS	24
 
 #include <windows.h>
 #include <sal.h>
@@ -13,6 +14,8 @@
 #include <httpserv.h>
 #include <vector>
 #include <string> 
+#include <condition_variable>
+#include <atomic>
 #include <Shlobj.h>
 #include <httplib/httplib.h>
 #include <Shlwapi.h>
@@ -24,7 +27,7 @@
 #pragma comment(lib, "v8_monolith.64.lib")
 #pragma comment(lib, "rpc.lib")
 #pragma comment(lib, "dbghelp.lib")
-#pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "winmm.lib")  
 #pragma comment(lib, "libcppdb.lib")
 #pragma comment(lib, "bcrypt.64.lib")
 #else
@@ -33,8 +36,8 @@
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "libcppdb.release.lib")
-#endif
-
+#endif 
+ 
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "libcrypto.lib")
 #pragma comment(lib, "libssl.lib")
