@@ -30,12 +30,14 @@
 #pragma comment(lib, "winmm.lib")  
 #pragma comment(lib, "libcppdb.lib")
 #pragma comment(lib, "bcrypt.64.lib")
+#pragma comment(lib, "zlibstaticd.lib")
 #else
 #pragma comment(lib, "v8_monolith.release.64.lib")
 #pragma comment(lib, "bcrypt.release.64.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "libcppdb.release.lib")
+#pragma comment(lib, "zlibstatic.release.lib")
 #endif 
  
 #pragma comment(lib, "crypt32.lib")
@@ -50,6 +52,8 @@
 #include <v8pp/module.hpp>
 #include <cppdb/frontend.h>
 #include <bcrypt/bcrypt.h>
+#include <gzip/compress.hpp>
+#include <gzip/decompress.hpp>
 #include <thread>
 #include <iostream>
 #include <sstream>
@@ -109,7 +113,6 @@ namespace v8_wrapper
 		BINARY
 	};
 
-
 	/**
 	 * A class which allows the ability to allocate an
 	 * external char array to be used with a v8::String.
@@ -118,15 +121,11 @@ namespace v8_wrapper
 	{
 	public:
 		ExternalString(size_t length) 
-			: data_(new char[length]), length_(length), was_allocated_(true) {}
-
-		ExternalString(const char* data, size_t length) 
-			: data_((char*)data), length_(length), was_allocated_(false) {}
+			: data_(new char[length]), length_(length) {}
 
 		~ExternalString() override
 		{
-			if (was_allocated_)
-				delete[] data_;
+			delete[] data_;
 		}
 
 		const char* data() const override
@@ -141,7 +140,6 @@ namespace v8_wrapper
 	private:
 		char* data_;
 		size_t length_;
-		bool was_allocated_;
 	};
 
 	/**

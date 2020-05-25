@@ -81,9 +81,7 @@ namespace v8_wrapper
 			v8::V8::InitializeICU(); 
 			v8::V8::Initialize();
 #ifdef _DEBUG
-			v8::V8::SetFlagsFromString("--always-opt --allow-natives-syntax --track-retaining-path --expose-gc");
-#else
-			v8::V8::SetFlagsFromString("--always-opt"); 
+			v8::V8::SetFlagsFromString("--allow-natives-syntax --track-retaining-path --expose-gc");
 #endif
 			///////////////////////////
 
@@ -1281,6 +1279,228 @@ namespace v8_wrapper
 
 		////////////////////////////////////////
 
+		// gzip Property  
+		v8pp::module gzip_module(isolate);
+
+		// gzip.compress(input: String, compressionLevel: Integer {32-bit only, optional, default: 6}): Promise<Uint8Array>
+		gzip_module.set("compress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for gzip.compress");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for gzip.compress");
+
+			auto string = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+
+			/////////////////////////////////////////////
+
+			// Setup our default workload.
+			int compressionLevel = Z_DEFAULT_COMPRESSION;
+
+			// Check if we were provided a custom workload value. 
+			if (args.Length() > 1 && args[1]->IsInt32())
+			{
+				compressionLevel = std::max(
+					0, std::min(v8pp::from_v8<int>(args.GetIsolate(), args[1]), 9)
+				);
+			}
+
+			/////////////////////////////////////////////
+
+			// Wait until threads free up.
+			{
+				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+				thread_count++;
+			}
+
+			/////////////////////////////////////////////
+
+			// Setup a resolver.
+			auto resolver = v8::Promise::Resolver::New(
+				args.GetIsolate()->GetCurrentContext()
+			).ToLocalChecked();
+
+			// Setup a global resolver object.
+			auto resolver_global = v8::Global<v8::Promise::Resolver>(
+				args.GetIsolate(), resolver
+			);
+
+			/////////////////////////////////////////////
+
+			// Set the return value to our promise.
+			args.GetReturnValue().Set(
+				resolver_global.Get(isolate)->GetPromise()
+			);
+
+			std::thread gzip_thread([string = std::move(string), compressionLevel, resolver = std::move(resolver_global)] {
+				// Setup an empty string because EXCEPTIONS! 
+				std::string compressed;
+
+				try 
+				{
+					compressed = gzip::compress(string.c_str(), string.length(), compressionLevel);
+				}
+				catch (std::exception & e) 
+				{
+					vs_printf("Exception at gzip.compress in gzip_thread (%s)\n", e.what());
+				} 
+
+				/////////////////////////////////////////////
+
+				// Decrement out thread count.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count--;
+				}
+				 
+				// Notify all waitees.
+				thread_count_cv.notify_one();
+
+				/////////////////////////////////////////////
+
+				v8::Locker locker(isolate);
+				v8::Isolate::Scope isolate_scope(isolate);
+				v8::HandleScope handle_scope(isolate);
+				v8::Context::Scope context_scope(context.Get(isolate));
+
+				if (!compressed.empty())
+				{
+					auto array_buffer = v8::ArrayBuffer::New(
+						isolate,
+						compressed.size()
+					);
+
+					////////////////////////////////////////////////
+					
+					std::memcpy(
+						array_buffer->GetContents().Data(),
+						compressed.data(),
+						compressed.size()
+					);
+
+					////////////////////////////////////////////////
+
+					auto uint8_array = v8::Uint8Array::New(
+						array_buffer,
+						0,
+						compressed.size()
+					); 
+
+					////////////////////////////////////////////////
+
+					resolver.Get(isolate)->Resolve(
+						isolate->GetCurrentContext(),
+						uint8_array
+					);
+				}
+				else
+				{
+					resolver.Get(isolate)->Reject(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, "failed to compress using gzip.")
+					);
+				}			
+			}); 
+
+			gzip_thread.detach();
+		});
+
+		// gzip.decompress(input: Uint8Array): Promise<String>
+		gzip_module.set("decompress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for gzip.decompress");
+
+			if (!args[0]->IsUint8Array())
+				throw std::exception("invalid first parameter, must be a uint8array for gzip.decompress");
+
+			auto uint8array_contents = args[0].As<v8::Uint8Array>()->Buffer()->GetContents();
+
+			// Get the uint8array buffer contents.
+			auto buffer = uint8array_contents.Data();
+			auto length = uint8array_contents.ByteLength();
+
+			/////////////////////////////////////////////
+
+			// Wait until threads free up.
+			{
+				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
+
+				thread_count++;
+			} 
+
+			/////////////////////////////////////////////
+
+			// Setup a resolver.
+			auto resolver = v8::Promise::Resolver::New(
+				args.GetIsolate()->GetCurrentContext()
+			).ToLocalChecked();
+
+			// Setup a global resolver object.
+			auto resolver_global = v8::Global<v8::Promise::Resolver>(
+				args.GetIsolate(), resolver
+			);
+
+			/////////////////////////////////////////////
+
+			// Set the return value to our promise.
+			args.GetReturnValue().Set(
+				resolver_global.Get(isolate)->GetPromise()
+			);
+
+			std::thread gzip_thread([buffer, length, resolver = std::move(resolver_global)] {
+				std::string decompressed;
+
+				try 
+				{
+					decompressed = gzip::decompress((const char*)buffer, length);
+				}
+				catch (std::exception & e) 
+				{
+					vs_printf("Exception at gzip.decompressed in gzip_thread (%s)\n", e.what());
+				} 
+
+				/////////////////////////////////////////////
+
+				// Decrement out thread count.
+				{
+					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+					thread_count--;
+				}
+				 
+				// Notify all waitees.
+				thread_count_cv.notify_one();
+
+				/////////////////////////////////////////////
+
+				v8::Locker locker(isolate);
+				v8::Isolate::Scope isolate_scope(isolate);
+				v8::HandleScope handle_scope(isolate);
+				v8::Context::Scope context_scope(context.Get(isolate));
+
+				if (!decompressed.empty())
+				{
+					resolver.Get(isolate)->Resolve(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, decompressed)
+					);
+				}
+				else
+				{
+					resolver.Get(isolate)->Reject(
+						isolate->GetCurrentContext(),
+						v8pp::to_v8(isolate, "failed to decompress using gzip.")
+					);
+				}			
+			}); 
+
+			gzip_thread.detach();
+		});
+
+		////////////////////////////////////////
+
 		// crypto Property  
 		v8pp::module crypto_module(isolate);
 		 
@@ -1498,6 +1718,9 @@ namespace v8_wrapper
 		
 		// crypto Object
 		global.set_const("crypto", crypto_module);
+		
+		// gzip Object
+		global.set_const("gzip", gzip_module);
 
 		////////////////////////////////////////
 
@@ -1951,7 +2174,7 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				bool with_index = args.Length() > 1;
-				auto input_value = args[with_index]; 
+				auto input_value = args[with_index];  
 
 				// Throw an exception if we were provided an index 
 				// but it isn't the correct data type.
