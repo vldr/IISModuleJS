@@ -568,6 +568,13 @@ namespace v8_wrapper
 				throw std::exception("invalid callback type for register");
 			}
 		});
+
+		global.set_const("BEGIN_REQUEST", 0);
+		global.set_const("SEND_RESPONSE", 1);
+		global.set_const("PRE_BEGIN_REQUEST", 2);
+		
+		global.set_const("CONTINUE", 0);
+		global.set_const("FINISH", 1);
 		
 		////////////////////////////////////////
 
@@ -597,7 +604,7 @@ namespace v8_wrapper
 
 			///////////////////////////////////////////////
 
-			FetchRequest fetch_request(hostname, path);
+			FetchRequest fetch_request(std::move(hostname), std::move(path));
 
 			///////////////////////////////////////////////
 			
@@ -932,7 +939,7 @@ namespace v8_wrapper
 			/////////////////////////////////////////////
 			
 			std::pair<uint8_t*, size_t> buffer = serializer.Release();
-			
+
 			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
 			
 			serializer_delegate.FreeBufferMemory(buffer.first);
@@ -978,7 +985,7 @@ namespace v8_wrapper
 			v8::ValueDeserializer deserializer(
 				args.GetIsolate(), 
 				buffer.get(),
-				len,
+				len, 
 				&deserializer_delegate
 			);
 
@@ -993,6 +1000,11 @@ namespace v8_wrapper
 					value.ToLocalChecked()
 				)
 			); 
+		});
+
+		// ipc.clear(): void
+		ipc_module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			db = simdb("IISModule", 1024, 4096);
 		});
 
 		////////////////////////////////////////
@@ -1277,6 +1289,11 @@ namespace v8_wrapper
 			);
 		});
 
+		db_module.set_const("STRING", 0);
+		db_module.set_const("INTEGER", 1);
+		db_module.set_const("DOUBLE", 2);
+		db_module.set_const("BOOL", 3);
+
 		////////////////////////////////////////
 
 		// gzip Property  
@@ -1293,7 +1310,7 @@ namespace v8_wrapper
 			auto string = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 
 			/////////////////////////////////////////////
-
+			 
 			// Setup our default workload.
 			int compressionLevel = Z_DEFAULT_COMPRESSION;
 
@@ -1405,13 +1422,13 @@ namespace v8_wrapper
 			}); 
 
 			gzip_thread.detach();
-		});
+		}); 
 
 		// gzip.decompress(input: Uint8Array): Promise<String>
 		gzip_module.set("decompress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for gzip.decompress");
-
+			 
 			if (!args[0]->IsUint8Array())
 				throw std::exception("invalid first parameter, must be a uint8array for gzip.decompress");
 
@@ -1484,7 +1501,7 @@ namespace v8_wrapper
 				{
 					resolver.Get(isolate)->Resolve(
 						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, decompressed)
+						v8pp::to_v8(isolate, std::move(decompressed))
 					);
 				}
 				else
@@ -1498,6 +1515,10 @@ namespace v8_wrapper
 
 			gzip_thread.detach();
 		});
+
+		gzip_module.set_const("NO_COMPRESSION", 0);
+		gzip_module.set_const("BEST_SPEED", 1);
+		gzip_module.set_const("BEST_COMPRESSION", 9);
 
 		////////////////////////////////////////
 
@@ -2132,7 +2153,7 @@ namespace v8_wrapper
 				case DB_DATA_TYPES::STRING:
 					RETURN_THIS(
 						input_type ? DB_CONTEXT->result.get<std::string>(input_col_index)
-						: DB_CONTEXT->result.get<std::string>(input_col_name)
+						: DB_CONTEXT->result.get<std::string>(std::move(input_col_name))
 					)
 					break; 
 				case DB_DATA_TYPES::INTEGER:
@@ -2191,8 +2212,8 @@ namespace v8_wrapper
 				{
 					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), input_value);
 
-					if (with_index) DB_CONTEXT->statement.bind(index, value);
-					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+					if (with_index) DB_CONTEXT->statement.bind(index, std::move(value));
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(std::move(value));
 				}
 				// Handle 32-bit integer data binding.
 				else if (input_value->IsInt32())
@@ -2241,8 +2262,8 @@ namespace v8_wrapper
 
 					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), to_string);
 
-					if (with_index) DB_CONTEXT->statement.bind(index, value);
-					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
+					if (with_index) DB_CONTEXT->statement.bind(index, std::move(value));
+					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(std::move(value));
 				}
 			});
 
@@ -3062,71 +3083,78 @@ namespace v8_wrapper
 			module.set("getMethod", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
-				RETURN_THIS(
-					std::string(HTTP_REQUEST->GetHttpMethod())
-				)
+				auto method = HTTP_REQUEST->GetHttpMethod();
+
+				args.GetReturnValue().Set(
+					v8pp::to_v8(isolate, method, strlen(method))
+				);
 			});
 
 			// getAbsPath(): String
 			module.set("getAbsPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
-				RETURN_THIS(
-					std::wstring(
+				args.GetReturnValue().Set(
+					v8pp::to_v8(
+						isolate,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pAbsPath,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.AbsPathLength / sizeof(wchar_t)
 					)
-				)
+				);
 			});
 			 
 			// getFullUrl(): String
 			module.set("getFullUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getFullUrl");
 
-				RETURN_THIS(
-					std::wstring(
+				args.GetReturnValue().Set(
+					v8pp::to_v8(
+						isolate,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pFullUrl,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.FullUrlLength / sizeof(wchar_t)
 					)
-				)
+				);
 			}); 
 
 			// getQueryString(): String
 			module.set("getQueryString", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
-				RETURN_THIS( 
-					std::wstring(
+				args.GetReturnValue().Set(
+					v8pp::to_v8(
+						isolate,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pQueryString,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.QueryStringLength / sizeof(wchar_t)
 					)
-				)
+				);
 			});
 
 			// getPath(): String
 			module.set("getPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
-				RETURN_THIS(
-					std::wstring(
+				args.GetReturnValue().Set(
+					v8pp::to_v8(
+						isolate,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pAbsPath,
-						(HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.AbsPathLength 
+						(HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.AbsPathLength
 						+ HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.QueryStringLength)
 						/ sizeof(wchar_t)
 					)
-				)
+				);
 			});
 
 			// getHost(): String
 			module.set("getHost", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getHost");
 
-				RETURN_THIS(
-					std::wstring(
+				args.GetReturnValue().Set(
+					v8pp::to_v8(
+						isolate,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.pHost,
 						HTTP_REQUEST->GetRawHttpRequest()->CookedUrl.HostLength / sizeof(wchar_t)
 					)
-				)
+				);
 			});
 
 			// getLocalAddress(): String
