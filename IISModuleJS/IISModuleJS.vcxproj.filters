@@ -17,7 +17,7 @@
     <ClCompile Include="http_module.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="iis_module_js.cpp">
+    <ClCompile Include="v8_wrapper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -28,7 +28,7 @@
     <ClInclude Include="module_factory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="iis_module_js.h">
+    <ClInclude Include="v8_wrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

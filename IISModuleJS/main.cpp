@@ -8,13 +8,8 @@ HRESULT WINAPI RegisterModule(DWORD dwServerVersion, IHttpModuleRegistrationInfo
 	UNREFERENCED_PARAMETER(dwServerVersion);
 
 	//////////////////////////////////////
-
-	iis_module_js::init_v8();
 	
-	for (int i = 0; i < NUM_OF_MODULES; i++)
-	{
-		modules[i] = new iis_module_js::IISModuleJS(pHttpServer->GetAppPoolName());
-	}
+	v8_wrapper::start(pHttpServer->GetAppPoolName());
 
 	//////////////////////////////////////
 	
