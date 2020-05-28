@@ -9,7 +9,6 @@ extern std::atomic<int> module_index;
 
 class HttpModule : public CHttpModule
 {
-
 public:
 	HttpModule();
 
