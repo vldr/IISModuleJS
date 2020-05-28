@@ -3370,7 +3370,7 @@ namespace v8_wrapper
 			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& args)
 			{
 				// Set our default notification status.
-				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0)
+				int request_notification_status = v8pp::from_v8<int>(args.GetIsolate(), args[0], 0)
 					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE;
 
 #ifndef DISABLE_INTERNAL_POINTER_RESET
@@ -3378,7 +3378,7 @@ namespace v8_wrapper
 				auto passthrough_objects = args.Data().As<v8::Array>();
 
 				// Get the context.
-				auto context = args.GetIsolate()->GetCurrentContext(); 
+				auto context = args.GetIsolate()->GetCurrentContext();
 
 				// Fetch our response objects.
 				auto http_response_object = passthrough_objects->Get(context, 0).ToLocalChecked().As<v8::Object>();
@@ -3387,7 +3387,7 @@ namespace v8_wrapper
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)(
 					http_response_object->GetAlignedPointerFromInternalField(0)
-				);
+					);
 
 				// Regardless of any result,
 				// we need to indicate that the we've completed
@@ -3410,7 +3410,7 @@ namespace v8_wrapper
 					REQUEST_NOTIFICATION_STATUS(request_notification_status)
 				);
 #endif 
-			}; 
+			};
 
 			////////////////////////////////////////////////
 
