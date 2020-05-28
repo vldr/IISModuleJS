@@ -19,7 +19,7 @@
 #include <Shlobj.h>
 #include <httplib/httplib.h>
 #include <Shlwapi.h>
- 
+
 #pragma comment(lib, "sqlite3.lib")
 
 #ifdef _DEBUG
@@ -39,7 +39,7 @@
 #pragma comment(lib, "libcppdb.release.lib")
 #pragma comment(lib, "zlibstatic.release.lib")
 #endif 
- 
+
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "libcrypto.lib")
 #pragma comment(lib, "libssl.lib")
@@ -61,7 +61,8 @@
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
-#define DISABLE_INTERNAL_POINTER_RESET
+
+//#define DISABLE_INTERNAL_POINTER_RESET
 
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
 #define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
@@ -78,17 +79,23 @@ http_request_object->SetAlignedPointerInInternalField(0, nullptr);
 #else
 
 #define RESET_INTERNAL_POINTERS
-
+ 
 #endif
 
 #define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
+#define IPC_OBJECT ((simdb*)args.This()->GetAlignedPointerFromInternalField(0))
 #define DB_CONTEXT ((DbContext*)args.This()->GetAlignedPointerFromInternalField(0))
 
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))
+ 
+#define NUM_OF_MODULES 4
+#define INCREMENT_COUNT (module_index = (module_index + 1) % NUM_OF_MODULES)
 
-namespace v8_wrapper
+namespace iis_module_js
 {
+	namespace fs = std::experimental::filesystem;
+
 	/**
 	 * An enum representing different types
 	 * of callbacks.
@@ -99,7 +106,7 @@ namespace v8_wrapper
 		SEND_RESPONSE,
 		PRE_BEGIN_REQUEST
 	};
-	 
+
 	/**
 	 * An enum representing different types
 	 * of fetch return types.
@@ -120,7 +127,7 @@ namespace v8_wrapper
 	class ExternalString : public v8::String::ExternalOneByteStringResource
 	{
 	public:
-		ExternalString(size_t length) 
+		ExternalString(size_t length)
 			: data_(new char[length]), length_(length) {}
 
 		~ExternalString() override
@@ -145,13 +152,13 @@ namespace v8_wrapper
 	/**
 	* A class that handles the IHttpContext object.
 	*/
-	class HttpContextHandler 
+	class HttpContextHandler
 	{
 	public:
 		HttpContextHandler() : m_http_context(nullptr) {}
 
 		HttpContextHandler(IHttpContext * http_context)
-			: m_http_context(http_context)  {}
+			: m_http_context(http_context) {}
 
 		void set(IHttpContext * http_context)
 		{
@@ -174,7 +181,6 @@ namespace v8_wrapper
 		IHttpContext * m_http_context;
 	};
 
-
 	/**
 	 * A class representing the http.fetch request object.
 	 */
@@ -182,7 +188,7 @@ namespace v8_wrapper
 	{
 	public:
 		FetchRequest(std::string hostname, std::string path)
-		: hostname(std::move(hostname)), path(std::move(path))
+			: hostname(std::move(hostname)), path(std::move(path))
 		{};
 
 		bool is_ssl = false;
@@ -207,11 +213,41 @@ namespace v8_wrapper
 
 	/**
 	* A struct that will manage the statement and session objects.
-	*/ 
+	*/
 	struct DbContext {
 		DbSession session = DbSession();
 		cppdb::statement statement = cppdb::statement();
 		cppdb::result result = cppdb::result::result();
+	};
+
+	/**
+	 * A class that manages the everything related to the ipc object.
+	 */
+	class IPCHandler
+	{
+	public:
+		IPCHandler(
+			v8::Isolate* isolate,
+			v8::Local<v8::Object> object,
+			void * context
+		) : m_context(context), ipc_object(isolate, object)
+		{
+			object->SetAlignedPointerInInternalField(0, m_context);
+		}
+
+		~IPCHandler()
+		{
+			delete m_context;
+		}
+
+		void reset(void * context)
+		{
+			delete m_context;
+			m_context = context;
+		}
+
+		void * m_context;
+		v8::Persistent<v8::Object> ipc_object;
 	};
 
 	/**
@@ -258,7 +294,7 @@ namespace v8_wrapper
 		{
 			object->SetAlignedPointerInInternalField(0, m_response);
 		}
-		
+
 		~FetchResponse()
 		{
 			delete m_response;
@@ -274,11 +310,11 @@ namespace v8_wrapper
 
 			return sum;
 		}
-		
+
 		httplib::Response * m_response;
 		v8::Persistent<v8::Object> response_object;
 	};
-	
+
 	/**
 	 * The delegate that handles deserialization.
 	 */
@@ -377,29 +413,117 @@ namespace v8_wrapper
 		v8::ArrayBuffer::Contents m_array_buffer;
 	};
 
-	const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
-		const void* lookup_key,
-		const char* const names[],
-		size_t count);
-	
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject);
+	/**
+	* An object used to pass response and request objects to the 
+	* finalization of an async response.
+	*/
+	class PassthroughObject
+	{
+	public:
+		v8::Global<v8::Object> m_http_response_object;
+		v8::Global<v8::Object> m_http_request_object;
+		IHttpContext * m_http_context;
 
-	void start(std::wstring app_pool_name);
-	void reset_engine();
-	void load_and_watch();
-	void initialize_objects();
+		PassthroughObject(
+			v8::Isolate * isolate,
+			IHttpContext * http_context,
+			v8::Local<v8::Object> http_response_object,
+			v8::Local<v8::Object> http_request_object
+		) :
+			m_http_context(http_context),
+			m_http_response_object(isolate, http_response_object),
+			m_http_request_object(isolate, http_request_object)
+		{
+		}
+	};
 
-	void directory_change_callback();
-	std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input);
+	void init_v8();
 
-	std::experimental::filesystem::path get_path(std::wstring script);
-	void execute_file(std::experimental::filesystem::path & script_path);
-	void report_exception(v8::TryCatch * try_catch);
+	class IISModuleJS {
 
-	std::string sock_to_ip(PSOCKADDR address);
-	bool execute_string(const char * script_name, char * str);
-	const char* c_string(v8::String::Utf8Value& value);
-	int vs_printf(const char *format, ...);
+	public:
+		IISModuleJS(std::wstring app_pool_name);
 
-	v8::Local<v8::Context> create_shell_context();
+		int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject);
+	private:
+
+		const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
+			const void* lookup_key,
+			const char* const names[],
+			size_t count);
+
+		void create_thread();
+		void release_thread();
+
+		v8::Isolate * isolate = nullptr;
+
+		void start(std::wstring app_pool_name);
+		void reset_engine();
+		void load_and_watch();
+		void initialize_objects();
+
+		void directory_change_callback();
+		std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input);
+
+		std::experimental::filesystem::path get_path(std::wstring script);
+		void execute_file(std::experimental::filesystem::path & script_path);
+		void report_exception(v8::TryCatch * try_catch);
+
+		std::string sock_to_ip(PSOCKADDR address);
+		bool execute_string(const char * script_name, char * str);
+		const char* c_string(v8::String::Utf8Value& value);
+		int vs_printf(const char *format, ...);
+
+		v8::Local<v8::Context> create_shell_context();
+
+		// All the global objects and functions for v8.
+		v8::Global<v8::Object> global_db_object;
+		v8::Global<v8::Object> global_fetch_object;
+		v8::Global<v8::Object> global_ipc_object;
+
+		v8::Global<v8::Object> global_http_response_object;
+		v8::Global<v8::Object> global_http_request_object;
+
+		/////////////////////////////////////////////////
+
+		v8::Global<v8::Function> function_pre_begin_request;
+		v8::Global<v8::Function> function_begin_request;
+		v8::Global<v8::Function> function_directory_change;
+		v8::Global<v8::Function> function_send_response;
+
+		// A persistent context for v8.
+		v8::Persistent<v8::Context> context;
+
+		// The name of the default script to be launched. 
+		std::wstring script_name;
+		std::wstring app_pool_folder_name;
+		fs::path fs_directory;
+
+		// Cache containing all our Eternal names.
+		std::unordered_map<
+			const void*,
+			std::vector<
+			v8::Eternal<v8::Name>
+			>
+		> eternal_name_cache_;
+
+		// A list containing all the loaded scripts to watch.
+		std::vector<
+			std::pair<
+			std::experimental::filesystem::path,
+			fs::file_time_type
+			>
+		> loaded_scripts;
+
+		// A collection of all cached paths in the engine.
+		std::unordered_map<std::wstring, std::experimental::filesystem::path> cached_paths;
+
+		// All variables needed for keeping track of the number of threads
+		// launched, we wish to keep it below a certain threshold as to
+		// not overload the machine.
+		int thread_count = 0;
+		std::condition_variable thread_count_cv;
+		std::mutex thread_count_lock;
+	};
 }
+

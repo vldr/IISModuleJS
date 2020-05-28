@@ -1,88 +1,41 @@
-#include "v8_wrapper.h"
+#include "iis_module_js.h"
 #include <simdb/simdb.hpp>
 
-namespace v8_wrapper
+namespace iis_module_js 
 {
-	namespace fs = std::experimental::filesystem;
+	std::unique_ptr<v8::Platform> platform;
 
-	// All the global objects and functions for v8.
-	v8::Global<v8::Object> global_db_object;
-	v8::Global<v8::Object> global_fetch_object;
+	void init_v8()
+	{
+		platform = v8::platform::NewDefaultPlatform();
 
-	v8::Global<v8::Object> global_http_response_object;
-	v8::Global<v8::Object> global_http_request_object;
-	 
-	/////////////////////////////////////////////////
+		v8::V8::InitializePlatform(platform.get());
+		v8::V8::InitializeICU();
+		v8::V8::Initialize();
 
-	v8::Global<v8::Function> function_pre_begin_request;
-	v8::Global<v8::Function> function_begin_request;
-	v8::Global<v8::Function> function_directory_change;
-	v8::Global<v8::Function> function_send_response;
+#ifdef _DEBUG
+		v8::V8::SetFlagsFromString("--allow-natives-syntax --track-retaining-path --expose-gc");
+#endif
+	}
 
-	// A persistent context for v8.
-	v8::Persistent<v8::Context> context;
-
-	// The unique isolate for v8.
-	v8::Isolate * isolate = nullptr; 
-
-	// The name of the default script to be launched. 
-	std::wstring script_name;
-	std::wstring app_pool_folder_name;
-	fs::path fs_directory;
-
-	// Cache containing all our Eternal names.
-	std::unordered_map<
-		const void*,
-		std::vector<
-			v8::Eternal<v8::Name>
-		>
-	> eternal_name_cache_;
-
-	// A list containing all the loaded scripts to watch.
-	std::vector<
-		std::pair<
-			std::experimental::filesystem::path, 
-			fs::file_time_type
-		>
-	> loaded_scripts;
-
-	// All variables needed for keeping track of the number of threads
-	// launched, we wish to keep it below a certain threshold as to
-	// not overload the machine.
-	int thread_count = 0;
-	std::condition_variable thread_count_cv;
-	std::mutex thread_count_lock;
-
-	// Simdb database use for ipc.get and ipc.set
-	simdb db;
+	IISModuleJS::IISModuleJS(std::wstring app_pool_name)
+	{
+		start(std::move(app_pool_name));
+	}
 
 	/**
-	 * The method that initializes everything necessary.
-	 */
-	void start(std::wstring app_pool_name)
+	* The method that initializes everything necessary.
+	*/
+	void IISModuleJS::start(std::wstring app_pool_name)
 	{
 		// Setup our engine thread.
-		std::thread engine_thread([app_pool_name] {	
-			db = simdb("IISModule", 1024, 4096);
-			db.flush();
-
-			///////////////////////////
+		std::thread engine_thread([this, app_pool_name] {	
 			
 			app_pool_folder_name = app_pool_name;
 
 			script_name = app_pool_folder_name;
 			script_name.append(L".js");
 
-			///////////////////////////
-			 
-			std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
-			
-			v8::V8::InitializePlatform(platform.get());
-			v8::V8::InitializeICU(); 
-			v8::V8::Initialize();
-#ifdef _DEBUG
-			v8::V8::SetFlagsFromString("--allow-natives-syntax --track-retaining-path --expose-gc");
-#endif
 			///////////////////////////
 
 			v8::Isolate::CreateParams create_params;
@@ -100,9 +53,9 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Resets the engine by creating a new context.
-	 */
-	void reset_engine()
+	* Resets the engine by creating a new context.
+	*/
+	void IISModuleJS::reset_engine()
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -128,7 +81,7 @@ namespace v8_wrapper
 	/**
 	* Directory notify change callback.
 	*/
-	void directory_change_callback()
+	void IISModuleJS::directory_change_callback()
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -155,10 +108,8 @@ namespace v8_wrapper
 	/**
 	* Returns the path to the filesystem directory.
 	*/
-	std::experimental::filesystem::path& get_relative_file_path(std::wstring &raw_input)
+	std::experimental::filesystem::path& IISModuleJS::get_relative_file_path(std::wstring &raw_input)
 	{
-		static auto cached_paths = std::unordered_map<std::wstring, std::experimental::filesystem::path>();
-
 		auto path = cached_paths.find(raw_input);
 
 		if (path != cached_paths.end())
@@ -267,7 +218,7 @@ namespace v8_wrapper
 				if (position == std::string::npos) position = input.length();
 
 				output += input.substr(0, position);
-				input = input.substr(position);
+				input = input.substr(position); 
 			}
 		}
 
@@ -280,10 +231,10 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Gets the path to the location of 
-	 * where all the scripts reside.
-	 */
-	std::experimental::filesystem::path get_path(std::wstring script = std::wstring())
+	* Gets the path to the location of 
+	* where all the scripts reside.
+	*/
+	std::experimental::filesystem::path IISModuleJS::get_path(std::wstring script = std::wstring())
 	{
 		//////////////////////////////////////////
 
@@ -322,9 +273,9 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Returns a preexisting or creates a new eternal instance.
-	 */
-	const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
+	* Returns a preexisting or creates a new eternal instance.
+	*/
+	const v8::Eternal<v8::Name>* IISModuleJS::find_or_create_eternal_name_cache(
 		const void* lookup_key, 
 		const char* const names[],
 		size_t count)
@@ -336,7 +287,7 @@ namespace v8_wrapper
 		{
 			std::vector<v8::Eternal<v8::Name>> new_vector(count);
 			std::transform(
-				names, names + count, new_vector.begin(), [](const char* name) {
+				names, names + count, new_vector.begin(), [this](const char* name) {
 					return v8::Eternal<v8::Name>(isolate, v8pp::to_v8(isolate, name));
 				}
 			);
@@ -352,11 +303,30 @@ namespace v8_wrapper
 		return vector->data();
 	}
 
+	void IISModuleJS::create_thread()
+	{
+		auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+		thread_count_cv.wait(unique_lock, [this]() { return thread_count < MAX_THREADS; });
+
+		thread_count++;
+	}
+
+	void IISModuleJS::release_thread()
+	{
+		{
+			auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
+			thread_count--;
+		}
+
+		// Notify all waitees.
+		thread_count_cv.notify_one();
+	}
+
 	/**
-	 * Loads an initial script file 
-	 * and watches for changes every second. 
-	 */
-	void load_and_watch()
+	* Loads an initial script file 
+	* and watches for changes every second. 
+	*/
+	void IISModuleJS::load_and_watch()
 	{  
 
 #ifdef _DEBUG
@@ -365,7 +335,7 @@ namespace v8_wrapper
 		rpc::server rpc_server(8080);
 
 		// Bind our execute function to actually execute our scripts.
-		rpc_server.bind("execute", [](std::string script) {
+		rpc_server.bind("execute", [this](std::string script) {
 			reset_engine();
 			
 			return execute_string("(rpc)", (char*)script.c_str());
@@ -463,10 +433,10 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Creates various global objects and methods 
-	 * and creates a brand new context.
-	 */
-	v8::Local<v8::Context> create_shell_context()
+	* Creates various global objects and methods 
+	* and creates a brand new context.
+	*/
+	v8::Local<v8::Context> IISModuleJS::create_shell_context()
 	{
 		// Setup isolate locker...
 		v8::Locker locker(isolate);
@@ -476,14 +446,14 @@ namespace v8_wrapper
 		v8pp::module global(isolate);
 
 		// print(msg: any, ...): void
-		global.set("print", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		global.set("print", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			for (int i = 0; i < args.Length(); i++)
 			{
 				// Get the string provided by the user.
 				v8::String::Utf8Value const value(
 					isolate,
 					args[i]->ToDetailString(
-						args.GetIsolate()->GetCurrentContext()
+						isolate->GetCurrentContext()
 					).ToLocalChecked()
 				);
 
@@ -499,11 +469,11 @@ namespace v8_wrapper
 		});
 
 		// load(fileName: String, ...): void
-		global.set("load", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		global.set("load", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			for (int i = 0; i < args.Length(); i++)
 			{
 				// Get the name of the file provided by the user.
-				auto name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[i]);
+				auto name = v8pp::from_v8<std::wstring>(isolate, args[i]);
 
 				// Get the path to the file.
 				auto path = get_path(name);
@@ -525,7 +495,7 @@ namespace v8_wrapper
 		// register(
 		//     callback: (Function(Response, Request): number)
 		// ): void
-		global.set("register", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		global.set("register", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1) throw std::exception("invalid function signature for register");
 
 			////////////////////////////////////////////////
@@ -586,7 +556,7 @@ namespace v8_wrapper
 		//	   path: String, 
 		//	   init: Object {optional},
 		// ): Promise
-		http_module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		http_module.set("fetch", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 2) 
 				throw std::exception("invalid function signature for http.fetch");
 
@@ -724,18 +694,13 @@ namespace v8_wrapper
 			/////////////////////////////////////////////
 
 			// Wait until threads free up.
-			{
-				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-				thread_count++;
-			} 
+			create_thread();
 
 			/////////////////////////////////////////////
 
 			// Setup a resolver.
-			auto resolver = v8::Promise::Resolver::New(args.GetIsolate()->GetCurrentContext()).ToLocalChecked();
-			auto resolver_global = v8::Global<v8::Promise::Resolver>(args.GetIsolate(), resolver);
+			auto resolver = v8::Promise::Resolver::New(isolate->GetCurrentContext()).ToLocalChecked();
+			auto resolver_global = v8::Global<v8::Promise::Resolver>(isolate, resolver);
 
 			// Set the return value to our promise.
 			args.GetReturnValue().Set(
@@ -743,7 +708,7 @@ namespace v8_wrapper
 			);
 
 			// Our request thread.
-			std::thread request_thread([
+			std::thread request_thread([this,
 				resolver = std::move(resolver_global), 
 				fetch_request = std::move(fetch_request)
 			] {
@@ -832,13 +797,7 @@ namespace v8_wrapper
 				////////////////////////////////////////////
 
 				// Decrement out thread count.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count--;
-				}
-
-				// Notify all waitees.
-				thread_count_cv.notify_one();
+				
 				
 				////////////////////////////////////////////
 
@@ -908,103 +867,67 @@ namespace v8_wrapper
 		});
 
 		////////////////////////////////////////
-
+		   
 		// ipc Property
 		v8pp::module ipc_module(isolate);
 
-		// ipc.set(key: String, value: any): void
-		ipc_module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			if (args.Length() < 2) 
-				throw std::exception("invalid function signature for ipc.set");
-			
-			if (!args[0]->IsString()) 
-				throw std::exception("invalid first parameter, must be a string for ipc.set");
+		// ipc.init(name: String): IPCObject
+		ipc_module.set("init", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for db.init");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for db.init");
 
 			/////////////////////////////////////////////
-
-			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 			 
-			/////////////////////////////////////////////
-
-			SerializerDelegate serializer_delegate(args.GetIsolate());
-			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
-			 
-			auto result = serializer.WriteValue(
-				args.GetIsolate()->GetCurrentContext(),
-				args[1]
-			).FromMaybe(false);
-
-			if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
-
+			auto name = v8pp::from_v8<std::string>(isolate, args[0]);
+			
 			/////////////////////////////////////////////
 			
-			std::pair<uint8_t*, size_t> buffer = serializer.Release();
-
-			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
-			
-			serializer_delegate.FreeBufferMemory(buffer.first);
-		});
-
-		// ipc.get(key: String): any || null
-		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate()); 
-			
-			if (args.Length() < 1) throw std::exception("invalid function signature for ipc.get");
-			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.get");
-
-			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			auto ipc_context = std::make_unique<simdb>(name.c_str(), 1024, 4096);
 
 			/////////////////////////////////////////////
 
-			simdb::u32 len = 0;
+			auto ipc_object = global_ipc_object.Get(isolate)->Clone();
+			auto ipc_handler = new IPCHandler(isolate, ipc_object, ipc_context.release());
 
-			db.len(key, &len);
+			//////////////////////////////////
 
-			if (!len) RETURN_NULL
+			ipc_handler->ipc_object.SetWeak(
+				ipc_handler,
+				[](const v8::WeakCallbackInfo<IPCHandler>& data)
+				{
+					// Reset our JS object.
+					data.GetParameter()->ipc_object.Reset();
 
-			/////////////////////////////////////////////
+					///////////////////////////////
 
-			auto buffer = std::make_unique<uint8_t[]>(len);
+					// Decrement our external memory usage.
+					data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
+						-(int64_t)sizeof(simdb)
+					);
 
-			if (!buffer)
-			{
-				throw std::exception("unable to allocate for ipc.get");
-			}
+					///////////////////////////////
 
-			auto result = db.get(
-				key.c_str(),
-				buffer.get(),
-				len
-			);
-			
-			if (!result) RETURN_NULL
-			
-			/////////////////////////////////////////////
-
-			DeserializerDelegate deserializer_delegate(args.GetIsolate());
-			v8::ValueDeserializer deserializer(
-				args.GetIsolate(), 
-				buffer.get(),
-				len, 
-				&deserializer_delegate
+					// Delete our object.
+					delete data.GetParameter();
+				},
+				v8::WeakCallbackType::kParameter
 			);
 
-			auto value = deserializer.ReadValue(args.GetIsolate()->GetCurrentContext());
+			//////////////////////////////////
 
-			if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
+			// Increment our external memory usage.
+			isolate->AdjustAmountOfExternalAllocatedMemory(
+				(int64_t)sizeof(simdb)
+			);
 
-			/////////////////////////////////////////////
-			
+			//////////////////////////////////
+
 			args.GetReturnValue().Set(
-				escapable_handle_scope.Escape(
-					value.ToLocalChecked()
-				)
-			); 
-		});
-
-		// ipc.clear(): void
-		ipc_module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			db = simdb("IISModule", 1024, 4096);
+				ipc_object
+			);
 		});
 
 		////////////////////////////////////////
@@ -1013,7 +936,7 @@ namespace v8_wrapper
 		v8pp::module fs_module(isolate);
 		    
 		// fs.register(callback: Function): void
-		fs_module.set("register", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		fs_module.set("register", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1) throw std::exception("invalid function signature for fs.register");
 
 			////////////////////////////////////////////////
@@ -1022,7 +945,7 @@ namespace v8_wrapper
 		});
 
 		// fs.copy(existingFileName: String, newFileName: String, overwrite: boolean {optional, default: false}): boolean 
-		fs_module.set("copy", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		fs_module.set("copy", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 2)
 				throw std::exception("invalid function signature for fs.copy");
 
@@ -1031,13 +954,13 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto existing_file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto existing_file_name = v8pp::from_v8<std::wstring>(isolate, args[0]);
 			auto existing_file_path = get_relative_file_path(existing_file_name);
 			
-			auto new_file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[1]);
+			auto new_file_name = v8pp::from_v8<std::wstring>(isolate, args[1]);
 			auto new_file_path = get_relative_file_path(new_file_name);
 
-			auto overwrite = args.Length() > 2 && args[2]->IsBoolean() && v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+			auto overwrite = args.Length() > 2 && args[2]->IsBoolean() && v8pp::from_v8<bool>(isolate, args[2]);
 
 			/////////////////////////////////////////////
 
@@ -1047,7 +970,7 @@ namespace v8_wrapper
 		});
 
 		// fs.exists(fileName: String): boolean 
-		fs_module.set("exists", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		fs_module.set("exists", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for fs.exists");
 
@@ -1056,7 +979,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_name = v8pp::from_v8<std::wstring>(isolate, args[0]);
 			auto file_path = get_relative_file_path(file_name);
 
 			/////////////////////////////////////////////
@@ -1067,7 +990,7 @@ namespace v8_wrapper
 		});
 
 		// fs.delete(fileName: String): boolean 
-		fs_module.set("delete", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		fs_module.set("delete", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for fs.delete");
 
@@ -1076,7 +999,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_name = v8pp::from_v8<std::wstring>(isolate, args[0]);
 			auto file_path = get_relative_file_path(file_name);
 
 			/////////////////////////////////////////////
@@ -1087,7 +1010,7 @@ namespace v8_wrapper
 		});
 
 		// fs.write(fileName: String, content: String || Uint8Array, append: boolean {optional, default: false}): void 
-		fs_module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		fs_module.set("write", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 2)
 				throw std::exception("invalid function signature for fs.write");
 
@@ -1096,11 +1019,11 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_name = v8pp::from_v8<std::wstring>(isolate, args[0]);
 			auto file_path = get_relative_file_path(file_name);
 
 			// Whether or not we should simply append to our file
-			auto append = args.Length() > 2 && args[2]->IsBoolean() && v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+			auto append = args.Length() > 2 && args[2]->IsBoolean() && v8pp::from_v8<bool>(isolate, args[2]);
 
 			/////////////////////////////////////////////
 
@@ -1136,7 +1059,7 @@ namespace v8_wrapper
 		});
 
 		// fs.read(fileName: String, asArray: bool {optional, default: false}): String || Uint8Array || null
-		fs_module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		fs_module.set("read", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for fs.read");
 
@@ -1145,7 +1068,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 			 
-			auto file_name = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
+			auto file_name = v8pp::from_v8<std::wstring>(isolate, args[0]);
 			auto file_path = get_relative_file_path(file_name); 
 
 			/////////////////////////////////////////////
@@ -1165,7 +1088,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto as_array = args.Length() > 1 && args[1]->IsBoolean() && v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
+			auto as_array = args.Length() > 1 && args[1]->IsBoolean() && v8pp::from_v8<bool>(isolate, args[1]);
 
 			if (as_array)
 			{
@@ -1230,7 +1153,7 @@ namespace v8_wrapper
 		v8pp::module db_module(isolate);
 		 
 		// db.init(connectionInfo: String): db Object
-		db_module.set("init", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		db_module.set("init", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for db.init");
 
@@ -1239,7 +1162,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto connection_info = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			auto connection_info = v8pp::from_v8<std::string>(isolate, args[0]);
 
 			/////////////////////////////////////////////
 
@@ -1263,7 +1186,7 @@ namespace v8_wrapper
 					///////////////////////////////
 
 					// Decrement our external memory usage.
-					isolate->AdjustAmountOfExternalAllocatedMemory(
+					data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
 						-data.GetParameter()->capacity()
 					);
 
@@ -1300,14 +1223,14 @@ namespace v8_wrapper
 		v8pp::module gzip_module(isolate);
 
 		// gzip.compress(input: String, compressionLevel: Integer {32-bit only, optional, default: 6}): Promise<Uint8Array>
-		gzip_module.set("compress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		gzip_module.set("compress", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for gzip.compress");
 
 			if (!args[0]->IsString())
 				throw std::exception("invalid first parameter, must be a string for gzip.compress");
 
-			auto string = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			auto string = v8pp::from_v8<std::string>(isolate, args[0]);
 
 			/////////////////////////////////////////////
 			 
@@ -1318,30 +1241,25 @@ namespace v8_wrapper
 			if (args.Length() > 1 && args[1]->IsInt32())
 			{
 				compressionLevel = std::max(
-					0, std::min(v8pp::from_v8<int>(args.GetIsolate(), args[1]), 9)
+					0, std::min(v8pp::from_v8<int>(isolate, args[1]), 9)
 				);
 			}
 
 			/////////////////////////////////////////////
 
 			// Wait until threads free up.
-			{
-				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-				thread_count++;
-			}
+			create_thread();
 
 			/////////////////////////////////////////////
 
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(
-				args.GetIsolate()->GetCurrentContext()
+				isolate->GetCurrentContext()
 			).ToLocalChecked();
 
 			// Setup a global resolver object.
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(
-				args.GetIsolate(), resolver
+				isolate, resolver
 			);
 
 			/////////////////////////////////////////////
@@ -1351,7 +1269,7 @@ namespace v8_wrapper
 				resolver_global.Get(isolate)->GetPromise()
 			);
 
-			std::thread gzip_thread([string = std::move(string), compressionLevel, resolver = std::move(resolver_global)] {
+			std::thread gzip_thread([this, string = std::move(string), compressionLevel, resolver = std::move(resolver_global)] {
 				// Setup an empty string because EXCEPTIONS! 
 				std::string compressed;
 
@@ -1367,13 +1285,7 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				// Decrement out thread count.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count--;
-				}
-				 
-				// Notify all waitees.
-				thread_count_cv.notify_one();
+				release_thread();
 
 				/////////////////////////////////////////////
 
@@ -1425,7 +1337,7 @@ namespace v8_wrapper
 		}); 
 
 		// gzip.decompress(input: Uint8Array): Promise<String>
-		gzip_module.set("decompress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		gzip_module.set("decompress", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for gzip.decompress");
 			 
@@ -1441,23 +1353,18 @@ namespace v8_wrapper
 			/////////////////////////////////////////////
 
 			// Wait until threads free up.
-			{
-				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-				thread_count++;
-			} 
+			create_thread();
 
 			/////////////////////////////////////////////
 
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(
-				args.GetIsolate()->GetCurrentContext()
+				isolate->GetCurrentContext()
 			).ToLocalChecked();
 
 			// Setup a global resolver object.
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(
-				args.GetIsolate(), resolver
+				isolate, resolver
 			);
 
 			/////////////////////////////////////////////
@@ -1467,7 +1374,7 @@ namespace v8_wrapper
 				resolver_global.Get(isolate)->GetPromise()
 			);
 
-			std::thread gzip_thread([buffer, length, resolver = std::move(resolver_global)] {
+			std::thread gzip_thread([this, buffer, length, resolver = std::move(resolver_global)] {
 				std::string decompressed;
 
 				try 
@@ -1482,13 +1389,7 @@ namespace v8_wrapper
 				/////////////////////////////////////////////
 
 				// Decrement out thread count.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count--;
-				}
-				 
-				// Notify all waitees.
-				thread_count_cv.notify_one();
+				release_thread();
 
 				/////////////////////////////////////////////
 
@@ -1532,7 +1433,7 @@ namespace v8_wrapper
 		crypto_module.set_const("bcrypt", bcrypt_module);
 
 		// crypto.bcrypt.hash(input: String, workload: Integer {32-bit only, optional, default: 12}): Promise<String>
-		bcrypt_module.set("hash", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		bcrypt_module.set("hash", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 1)
 				throw std::exception("invalid function signature for crypto.bcrypt");
 
@@ -1541,7 +1442,7 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto input = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			auto input = v8pp::from_v8<std::string>(isolate, args[0]);
 
 			/////////////////////////////////////////////
 
@@ -1550,28 +1451,23 @@ namespace v8_wrapper
 
 			// Check if we were provided a custom workload value.
 			if (args.Length() > 1 && args[1]->IsInt32())
-				workload = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
+				workload = v8pp::from_v8<int>(isolate, args[1]);
 
 			/////////////////////////////////////////////
 
 			// Wait until threads free up.
-			{
-				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-				thread_count++;
-			}
+			create_thread();
 
 			/////////////////////////////////////////////
 
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(
-				args.GetIsolate()->GetCurrentContext()
+				isolate->GetCurrentContext()
 			).ToLocalChecked();
 
 			// Setup a global resolver object.
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(
-				args.GetIsolate(), resolver
+				isolate, resolver
 			);
 
 			/////////////////////////////////////////////
@@ -1581,7 +1477,7 @@ namespace v8_wrapper
 				resolver_global.Get(isolate)->GetPromise()
 			);
 
-			std::thread bcrypt_thread([workload, input_value = std::move(input), resolver = std::move(resolver_global)] {
+			std::thread bcrypt_thread([this, workload, input_value = std::move(input), resolver = std::move(resolver_global)] {
 				char salt[BCRYPT_HASHSIZE];
 				char hash[BCRYPT_HASHSIZE];
 
@@ -1609,14 +1505,7 @@ namespace v8_wrapper
 
 			finish:
 
-				// Decrement out thread count.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count--;
-				}
-				 
-				// Notify all waitees.
-				thread_count_cv.notify_one();
+				release_thread();
 
 				/////////////////////////////////////////////
 
@@ -1637,7 +1526,7 @@ namespace v8_wrapper
 					// Resolve our promise.
 					resolver.Get(isolate)->Resolve(
 						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, hash, BCRYPT_HASHSIZE)
+						v8pp::to_v8(isolate, hash, strlen(hash))
 					);
 				}
 			}); 
@@ -1646,7 +1535,7 @@ namespace v8_wrapper
 		});
 
 		// crypto.bcrypt.check(password: String, hash: String): Promise<bool>
-		bcrypt_module.set("check", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+		bcrypt_module.set("check", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 			if (args.Length() < 2)
 				throw std::exception("invalid function signature for crypto.bcryptCompare");
 
@@ -1655,29 +1544,24 @@ namespace v8_wrapper
 
 			/////////////////////////////////////////////
 
-			auto password = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-			auto hash = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+			auto password = v8pp::from_v8<std::string>(isolate, args[0]);
+			auto hash = v8pp::from_v8<std::string>(isolate, args[1]);
 
 			/////////////////////////////////////////////
 
 			// Wait until threads free up.
-			{
-				auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-				thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-				thread_count++;
-			}
+			create_thread();
 
 			/////////////////////////////////////////////
 
 			// Setup a resolver.
 			auto resolver = v8::Promise::Resolver::New(
-				args.GetIsolate()->GetCurrentContext()
+				isolate->GetCurrentContext()
 			).ToLocalChecked();
 
 			// Setup a global resolver object.
 			auto resolver_global = v8::Global<v8::Promise::Resolver>(
-				args.GetIsolate(), resolver
+				isolate, resolver
 			);
 
 			/////////////////////////////////////////////
@@ -1687,7 +1571,7 @@ namespace v8_wrapper
 				resolver_global.Get(isolate)->GetPromise()
 			);
 
-			std::thread bcrypt_thread([
+			std::thread bcrypt_thread([this,
 				input_password = std::move(password),
 				input_hash = std::move(hash),
 				resolver = std::move(resolver_global)
@@ -1697,14 +1581,7 @@ namespace v8_wrapper
 
 				////////////////////////////////////////////
 
-				// Decrement out thread count.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count--;
-				}
-
-				// Notify all waitees.
-				thread_count_cv.notify_one();
+				release_thread();
 
 				/////////////////////////////////////////////
 
@@ -1749,9 +1626,9 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Initializes global objects.
-	 */
-	void initialize_objects()
+	* Initializes global objects.
+	*/
+	void IISModuleJS::initialize_objects()
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -1770,7 +1647,7 @@ namespace v8_wrapper
 			// Setup our functions
 
 			// prepare(query: String): void
-			module.set("prepare", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("prepare", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for prepare");
 
 				if (args.Length() < 1)
@@ -1781,7 +1658,7 @@ namespace v8_wrapper
 
 				/////////////////////////////////////////////
 
-				auto query = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+				auto query = v8pp::from_v8<std::string>(isolate, args[0]);
 
 				/////////////////////////////////////////////
 
@@ -1789,7 +1666,7 @@ namespace v8_wrapper
 			});
 
 			// reset(): void
-			module.set("reset", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("reset", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for reset");
 
 				/////////////////////////////////////////////
@@ -1798,29 +1675,24 @@ namespace v8_wrapper
 			});
 
 			// exec(): Promise<void>
-			module.set("exec", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("exec", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for exec");
 
 				/////////////////////////////////////////////
 
 				// Wait until threads free up.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-					thread_count++; 
-				}
+				create_thread();
 
 				/////////////////////////////////////////////
 
 				// Setup a resolver.
 				auto resolver = v8::Promise::Resolver::New(
-					args.GetIsolate()->GetCurrentContext()
+					isolate->GetCurrentContext()
 				).ToLocalChecked();
 
 				// Setup a global resolver object.
 				auto resolver_global = v8::Global<v8::Promise::Resolver>(
-					args.GetIsolate(), resolver
+					isolate, resolver
 				);
 
 				/////////////////////////////////////////////
@@ -1830,7 +1702,7 @@ namespace v8_wrapper
 					resolver_global.Get(isolate)->GetPromise()
 				);
 
-				std::thread db_thread([db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
+				std::thread db_thread([this, db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
 					std::string error_message;
 
 					try 
@@ -1845,13 +1717,7 @@ namespace v8_wrapper
 					/////////////////////////////////////////////
 
 					// Decrement out thread count.
-					{
-						auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-						thread_count--;
-					} 
-
-					// Notify all waitees.
-					thread_count_cv.notify_one();
+					release_thread();
 
 					/////////////////////////////////////////////
 
@@ -1880,7 +1746,7 @@ namespace v8_wrapper
 			});
 
 			// execSync(): void
-			module.set("execSync", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("execSync", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for exec");
 
 				/////////////////////////////////////////////
@@ -1889,29 +1755,24 @@ namespace v8_wrapper
 			});  
 
 			// query(): Promise<void>
-			module.set("query", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("query", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for query");
 
 				/////////////////////////////////////////////
 
 				// Wait until threads free up.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-					thread_count++;
-				}
+				create_thread();
 
 				/////////////////////////////////////////////
 
 				// Setup a resolver.
 				auto resolver = v8::Promise::Resolver::New(
-					args.GetIsolate()->GetCurrentContext()
+					isolate->GetCurrentContext()
 				).ToLocalChecked();
 
 				// Setup a global resolver object.
 				auto resolver_global = v8::Global<v8::Promise::Resolver>(
-					args.GetIsolate(), resolver
+					isolate, resolver
 				);
 
 				/////////////////////////////////////////////
@@ -1921,7 +1782,7 @@ namespace v8_wrapper
 					resolver_global.Get(isolate)->GetPromise()
 				);
 
-				std::thread db_thread([db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
+				std::thread db_thread([this, db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
 					std::string error_message;
 
 					try 
@@ -1936,13 +1797,7 @@ namespace v8_wrapper
 					/////////////////////////////////////////////
 
 					// Decrement out thread count.
-					{
-						auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-						thread_count--;
-					}
-
-					// Notify all waitees.
-					thread_count_cv.notify_one();
+					release_thread();
 
 					/////////////////////////////////////////////
 
@@ -1971,7 +1826,7 @@ namespace v8_wrapper
 			}); 
 
 			// querySync(): void
-			module.set("querySync", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("querySync", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for query");
 				 
 				/////////////////////////////////////////////
@@ -1980,29 +1835,24 @@ namespace v8_wrapper
 			}); 
 
 			// queryRow(): Promise<boolean>
-			module.set("queryRow", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("queryRow", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
 
 				/////////////////////////////////////////////
 
 				// Wait until threads free up.
-				{
-					auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-					thread_count_cv.wait(unique_lock, []() { return thread_count < MAX_THREADS; });
-
-					thread_count++;
-				}
+				create_thread();
 
 				/////////////////////////////////////////////
 
 				// Setup a resolver.
 				auto resolver = v8::Promise::Resolver::New(
-					args.GetIsolate()->GetCurrentContext()
+					isolate->GetCurrentContext()
 				).ToLocalChecked();
 
 				// Setup a global resolver object.
 				auto resolver_global = v8::Global<v8::Promise::Resolver>(
-					args.GetIsolate(), resolver
+					isolate, resolver
 				);
 
 				/////////////////////////////////////////////
@@ -2012,7 +1862,7 @@ namespace v8_wrapper
 					resolver_global.Get(isolate)->GetPromise()
 				);
 
-				std::thread db_thread([db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
+				std::thread db_thread([this, db_context = DB_CONTEXT, resolver = std::move(resolver_global)] {
 					std::string error_message;
 
 					try 
@@ -2027,13 +1877,7 @@ namespace v8_wrapper
 					/////////////////////////////////////////////
 
 					// Decrement out thread count.
-					{
-						auto unique_lock = std::unique_lock<std::mutex>(thread_count_lock);
-						thread_count--;
-					}
-
-					// Notify all waitees.
-					thread_count_cv.notify_one();
+					release_thread();
 
 					/////////////////////////////////////////////
 
@@ -2062,7 +1906,7 @@ namespace v8_wrapper
 			});
 			
 			// queryRowSync(): boolean
-			module.set("queryRowSync", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("queryRowSync", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for row");
 
 				/////////////////////////////////////////////
@@ -2087,7 +1931,7 @@ namespace v8_wrapper
 			});
 
 			// next(): bool
-			module.set("next", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("next", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for next");
 
 				/////////////////////////////////////////////
@@ -2102,7 +1946,7 @@ namespace v8_wrapper
 			//
 			// [SIGNATURE 2]
 			// fetch(dataType: DB_DATA_TYPES, col: Number): Number | String | boolean | null | Uint8Array
-			module.set("fetch", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("fetch", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) throw std::exception("invalid db context for fetch");
 				 
 				if (args.Length() < 2)
@@ -2113,7 +1957,7 @@ namespace v8_wrapper
 
 				///////////////////////////////////////////// 
 
-				int data_type = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+				int data_type = v8pp::from_v8<int>(isolate, args[0]);
 				
 				///////////////////////////////////////////// 
 
@@ -2131,12 +1975,12 @@ namespace v8_wrapper
 				if (args[1]->IsString()) 
 				{
 					input_type = false;
-					input_col_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
+					input_col_name = v8pp::from_v8<std::string>(isolate, args[1]);
 				}
 				else if (args[1]->IsInt32()) 
 				{
 					input_type = true;
-					input_col_index = v8pp::from_v8<int>(args.GetIsolate(), args[1]);
+					input_col_index = v8pp::from_v8<int>(isolate, args[1]);
 				}
 				else 
 					throw std::exception("invalid second parameter must be an integer (32-bit only) or string");
@@ -2185,7 +2029,7 @@ namespace v8_wrapper
 			// 
 			// [SIGNATURE 2]
 			// bind(index: Number {32-bit integer only}, value: Number | String | boolean | null): void
-			module.set("bind", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("bind", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!DB_CONTEXT) 
 					throw std::exception("invalid db context for bind");
 
@@ -2203,14 +2047,14 @@ namespace v8_wrapper
 					throw std::exception("invalid index type for bind");
 
 				// Get our index if provided.
-				int index = with_index ? v8pp::from_v8<int>(args.GetIsolate(), args[0]) : 0;
+				int index = with_index ? v8pp::from_v8<int>(isolate, args[0]) : 0;
 
 				/////////////////////////////////////////////
 
 				// Handle string data binding.
 				if (input_value->IsString())
 				{
-					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), input_value);
+					auto value = v8pp::from_v8<std::string>(isolate, input_value);
 
 					if (with_index) DB_CONTEXT->statement.bind(index, std::move(value));
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(std::move(value));
@@ -2218,7 +2062,7 @@ namespace v8_wrapper
 				// Handle 32-bit integer data binding.
 				else if (input_value->IsInt32())
 				{
-					auto value = v8pp::from_v8<int>(args.GetIsolate(), input_value);
+					auto value = v8pp::from_v8<int>(isolate, input_value);
 
 					if (with_index) DB_CONTEXT->statement.bind(index, value);
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
@@ -2226,7 +2070,7 @@ namespace v8_wrapper
 				// Handle boolean data binding.
 				else if (input_value->IsBoolean())
 				{ 
-					auto value = v8pp::from_v8<bool>(args.GetIsolate(), input_value);
+					auto value = v8pp::from_v8<bool>(isolate, input_value);
 
 					if (with_index) DB_CONTEXT->statement.bind(index, value);
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
@@ -2234,7 +2078,7 @@ namespace v8_wrapper
 				// Handle double data binding.
 				else if (input_value->IsNumber())
 				{
-					auto value = v8pp::from_v8<double>(args.GetIsolate(), input_value);
+					auto value = v8pp::from_v8<double>(isolate, input_value);
 
 					if (with_index) DB_CONTEXT->statement.bind(index, value);
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(value);
@@ -2252,7 +2096,7 @@ namespace v8_wrapper
 
 					//////////////////////////////////////
 
-					auto result = input_value->ToString(args.GetIsolate()->GetCurrentContext())
+					auto result = input_value->ToString(isolate->GetCurrentContext())
 						.ToLocal(&to_string); 
 
 					if (!result)
@@ -2260,7 +2104,7 @@ namespace v8_wrapper
 
 					//////////////////////////////////////
 
-					auto value = v8pp::from_v8<std::string>(args.GetIsolate(), to_string);
+					auto value = v8pp::from_v8<std::string>(isolate, to_string);
 
 					if (with_index) DB_CONTEXT->statement.bind(index, std::move(value));
 					else DB_CONTEXT->statement = DB_CONTEXT->statement.bind(std::move(value));
@@ -2285,14 +2129,14 @@ namespace v8_wrapper
 			// Setup our functions
 
 			// status(): number
-			module.set("status", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("status", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for status");
 
 				RETURN_THIS(FETCH_RESPONSE->status)
 			});
 
 			// text(): String || null
-			module.set("text", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("text", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for text");
 
 				////////////////////////////////////////////////
@@ -2323,7 +2167,7 @@ namespace v8_wrapper
 			});
 
 			// blob(): Uint8Array || null
-			module.set("blob", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("blob", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for blob");
 
 				////////////////////////////////////////////////
@@ -2363,7 +2207,7 @@ namespace v8_wrapper
 			});
 
 			// headers(): Object<String, String> || null
-			module.set("headers", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("headers", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!FETCH_RESPONSE) throw std::exception("invalid fetch response for headers");
 
 				////////////////////////////////////////////////
@@ -2401,6 +2245,132 @@ namespace v8_wrapper
 
 			// Reset our pointer...
 			global_fetch_object.Reset(isolate, module.new_instance());
+		}
+
+		/////////////////////////////
+		// IPC JS Object //
+		/////////////////////////////
+		if (global_ipc_object.IsEmpty())
+		{
+			// Setup our module...
+			v8pp::module module(isolate); 
+
+			// Setup our functions
+
+			// ipc.set(key: String, value: any): void
+			module.set("set", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!IPC_OBJECT)
+					throw std::exception("invalid function pointer for ipc.set");
+
+				if (args.Length() < 2) 
+					throw std::exception("invalid function signature for ipc.set");
+			
+				if (!args[0]->IsString()) 
+					throw std::exception("invalid first parameter, must be a string for ipc.set");
+
+				/////////////////////////////////////////////
+
+				auto key = v8pp::from_v8<std::string>(isolate, args[0]);
+
+				if (args[1]->IsNull())
+				{
+					IPC_OBJECT->del(key);
+					return;
+				}
+			 
+				/////////////////////////////////////////////
+
+				SerializerDelegate serializer_delegate(isolate);
+				v8::ValueSerializer serializer(isolate, &serializer_delegate);
+			 
+				auto result = serializer.WriteValue(
+					isolate->GetCurrentContext(),
+					args[1]
+				).FromMaybe(false);
+
+				if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
+
+				/////////////////////////////////////////////
+			
+				std::pair<uint8_t*, size_t> buffer = serializer.Release();
+
+				result = IPC_OBJECT->put(key.data(), key.length(), buffer.first, buffer.second);
+			
+				serializer_delegate.FreeBufferMemory(buffer.first);
+			});
+
+			// ipc.get(key: String): any || null
+			module.set("get", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!IPC_OBJECT)
+					throw std::exception("invalid function pointer for ipc.get");
+			
+				if (args.Length() < 1) 
+					throw std::exception("invalid function signature for ipc.get");
+
+				if (!args[0]->IsString()) 
+					throw std::exception("invalid first parameter, must be a string for ipc.get");
+
+				auto key = v8pp::from_v8<std::string>(isolate, args[0]);
+
+				/////////////////////////////////////////////
+
+				simdb::u32 len = 0;
+
+				IPC_OBJECT->len(key, &len);
+
+				if (!len) RETURN_NULL
+
+				/////////////////////////////////////////////
+
+				auto buffer = std::make_unique<uint8_t[]>(len);
+
+				if (!buffer)
+				{
+					throw std::exception("unable to allocate for ipc.get");
+				}
+
+				auto result = IPC_OBJECT->get(
+					key.c_str(),
+					buffer.get(),
+					len
+				);
+			
+				if (!result) RETURN_NULL
+			
+				/////////////////////////////////////////////
+
+				DeserializerDelegate deserializer_delegate(isolate);
+				v8::ValueDeserializer deserializer(
+					isolate, 
+					buffer.get(),
+					len, 
+					&deserializer_delegate
+				);
+
+				auto value = deserializer.ReadValue(isolate->GetCurrentContext());
+
+				if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
+
+				/////////////////////////////////////////////
+			
+				args.GetReturnValue().Set(
+					value.ToLocalChecked()
+				); 
+			});
+
+			// ipc.close(): void
+			module.set("close", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!IPC_OBJECT)
+					throw std::exception("invalid function pointer for ipc.close");
+
+				IPC_OBJECT->close();
+			});
+
+			// Set our internal field count.
+			module.obj_->SetInternalFieldCount(1);
+
+			// Reset our pointer...
+			global_ipc_object.Reset(isolate, module.new_instance());
 		}
 		
 		////////////////////////////
@@ -2456,14 +2426,14 @@ namespace v8_wrapper
 			});	
 
 			// resetConnection(): void
-			module.set("resetConnection", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("resetConnection", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for resetConnection");
 					
 				HTTP_RESPONSE->ResetConnection(); 
 			});
 							
 			// getStatus(): Number
-			module.set("getStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getStatus", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for getStatus");
 
@@ -2478,7 +2448,7 @@ namespace v8_wrapper
 			});
 
 			// setStatus(statusCode: Number, statusMessage: String): void
-			module.set("setStatus", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("setStatus", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setStatus");
 
 				////////////////////////////////
@@ -2487,9 +2457,9 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto status_code = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+				auto status_code = v8pp::from_v8<int>(isolate, args[0]);
 				auto status_message
-					= v8pp::from_v8<const char*>(args.GetIsolate(), args[1]);
+					= v8pp::from_v8<const char*>(isolate, args[1]);
 				
 				////////////////////////////////
 
@@ -2502,7 +2472,7 @@ namespace v8_wrapper
 			
 
 			// redirect(url: String, resetStatusCode: bool, includeParameters: bool): void
-			module.set("redirect", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("redirect", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for redirect");
 
 				////////////////////////////////
@@ -2511,9 +2481,9 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto url = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-				auto reset_status_code = v8pp::from_v8<bool>(args.GetIsolate(), args[1]); 
-				auto include_parameters = v8pp::from_v8<bool>(args.GetIsolate(), args[2]);
+				auto url = v8pp::from_v8<std::string>(isolate, args[0]);
+				auto reset_status_code = v8pp::from_v8<bool>(isolate, args[1]); 
+				auto include_parameters = v8pp::from_v8<bool>(isolate, args[2]);
 				
 				////////////////////////////////
 
@@ -2529,7 +2499,7 @@ namespace v8_wrapper
 			}); 
 
 			// setErrorDescription(decription: String, shouldHtmlEncode: bool): void
-			module.set("setErrorDescription", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("setErrorDescription", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setErrorDescription");
 
 				////////////////////////////////
@@ -2538,8 +2508,8 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto description = v8pp::from_v8<std::wstring>(args.GetIsolate(), args[0]);
-				auto should_html_encode = v8pp::from_v8<bool>(args.GetIsolate(), args[1]);
+				auto description = v8pp::from_v8<std::wstring>(isolate, args[0]);
+				auto should_html_encode = v8pp::from_v8<bool>(isolate, args[1]);
 
 				////////////////////////////////
 				
@@ -2553,7 +2523,7 @@ namespace v8_wrapper
 			});
 
 			// disableKernelCache(reason: Number): void
-			module.set("disableKernelCache", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("disableKernelCache", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for disableKernelCache");
 
 				////////////////////////////////
@@ -2562,7 +2532,7 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto reason = v8pp::from_v8<int>(args.GetIsolate(), args[0]);
+				auto reason = v8pp::from_v8<int>(isolate, args[0]);
 
 				////////////////////////////////
 
@@ -2572,7 +2542,7 @@ namespace v8_wrapper
 			});
 
 			// deleteHeader(headerName: String): void
-			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("deleteHeader", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for deleteHeader");
 
 				////////////////////////////////
@@ -2581,7 +2551,7 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+				auto header_name = v8pp::from_v8<std::string>(isolate, args[0]);
 
 				////////////////////////////////
 
@@ -2595,7 +2565,7 @@ namespace v8_wrapper
 			});
 
 			// getHeader(headerName: String): String || null
-			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getHeader", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for getHeader");
 
 				////////////////////////////////
@@ -2637,7 +2607,7 @@ namespace v8_wrapper
 			}); 
 
 			// read(asArray: bool {optional}): String || Uint8Array || null
-			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("read", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for read");
 
 				////////////////////////////////////////////////
@@ -2767,7 +2737,7 @@ namespace v8_wrapper
 			});
 			
 			// write(body: String || Uint8Array, mimetype: String {optional}, contentEncoding: String {optional}): void
-			module.set("write", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("write", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our http response is set.
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for write");
 
@@ -2868,7 +2838,7 @@ namespace v8_wrapper
 			});
 
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
-			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("setHeader", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_RESPONSE) throw std::exception("invalid p_http_response for setHeader");
 
 				////////////////////////////////
@@ -2877,9 +2847,9 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
-				auto should_replace = v8pp::from_v8<bool>(args.GetIsolate(), args[2], true);
+				auto header_name = v8pp::from_v8<std::string>(isolate, args[0]);
+				auto header_value = v8pp::from_v8<std::string>(isolate, args[1]);
+				auto should_replace = v8pp::from_v8<bool>(isolate, args[2], true);
 
 				////////////////////////////////
 
@@ -2915,7 +2885,7 @@ namespace v8_wrapper
 			// Setup our functions
 			
 			// read(rewrite: bool {optional}): String || null
-			module.set("read", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("read", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for read");
 
 				////////////////////////////////
@@ -3004,7 +2974,7 @@ namespace v8_wrapper
 			});
 
 			// setUrl(url: String, resetQueryString: bool {optional}): void
-			module.set("setUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("setUrl", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for setUrl");
 
 				////////////////////////////////
@@ -3030,7 +3000,7 @@ namespace v8_wrapper
 			});	
 
 			// deleteHeader(headerName: String): void
-			module.set("deleteHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("deleteHeader", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for deleteHeader");
 
 				///////////////////////////////
@@ -3053,7 +3023,7 @@ namespace v8_wrapper
 			});
 
 			// setHeader(headerName: String, headerValue: String, shouldReplace: bool {optional}): void
-			module.set("setHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("setHeader", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for setHeader");
 
 				////////////////////////////////
@@ -3062,9 +3032,9 @@ namespace v8_wrapper
 
 				////////////////////////////////
 
-				auto header_name = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
-				auto header_value = v8pp::from_v8<std::string>(args.GetIsolate(), args[1]);
-				auto should_replace = v8pp::from_v8<bool>(args.GetIsolate(), args[2], true);
+				auto header_name = v8pp::from_v8<std::string>(isolate, args[0]);
+				auto header_value = v8pp::from_v8<std::string>(isolate, args[1]);
+				auto should_replace = v8pp::from_v8<bool>(isolate, args[2], true);
 
 				////////////////////////////////
 				auto hr = HTTP_REQUEST->SetHeader(
@@ -3080,7 +3050,7 @@ namespace v8_wrapper
 			});
 
 			// getMethod(): String
-			module.set("getMethod", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getMethod", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
 				auto method = HTTP_REQUEST->GetHttpMethod();
@@ -3091,7 +3061,7 @@ namespace v8_wrapper
 			});
 
 			// getAbsPath(): String
-			module.set("getAbsPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getAbsPath", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getMethod");
 
 				args.GetReturnValue().Set(
@@ -3104,7 +3074,7 @@ namespace v8_wrapper
 			});
 			 
 			// getFullUrl(): String
-			module.set("getFullUrl", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getFullUrl", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getFullUrl");
 
 				args.GetReturnValue().Set(
@@ -3117,7 +3087,7 @@ namespace v8_wrapper
 			}); 
 
 			// getQueryString(): String
-			module.set("getQueryString", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getQueryString", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
 				args.GetReturnValue().Set(
@@ -3130,7 +3100,7 @@ namespace v8_wrapper
 			});
 
 			// getPath(): String
-			module.set("getPath", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getPath", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getQueryString");
 
 				args.GetReturnValue().Set(
@@ -3145,7 +3115,7 @@ namespace v8_wrapper
 			});
 
 			// getHost(): String
-			module.set("getHost", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getHost", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getHost");
 
 				args.GetReturnValue().Set(
@@ -3158,7 +3128,7 @@ namespace v8_wrapper
 			});
 
 			// getLocalAddress(): String
-			module.set("getLocalAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getLocalAddress", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getLocalAddress");
 
@@ -3170,7 +3140,7 @@ namespace v8_wrapper
 			}); 
 
 			// getRemoteAddress(): String
-			module.set("getRemoteAddress", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getRemoteAddress", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				// Check if our pointer is valid...
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getRemoteAddress");
 				
@@ -3182,7 +3152,7 @@ namespace v8_wrapper
 			});
 
 			// getHeader(headerName: String): String || null
-			module.set("getHeader", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			module.set("getHeader", [this](v8::FunctionCallbackInfo<v8::Value> const& args) {
 				if (!HTTP_CONTEXT || !HTTP_REQUEST) throw std::exception("invalid p_http_request for getHeader");
 				
 				////////////////////////////////
@@ -3231,9 +3201,9 @@ namespace v8_wrapper
 	}
 	 
 	/**
-	 * Handles a callback that is registered in JS.
-	 */
-	int handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject)
+		* Handles a callback that is registered in JS.
+		*/
+	int IISModuleJS::handle_callback(CALLBACK_TYPES type, IHttpContext * pHttpContext, void * pObject)
 	{
 		if (!isolate) return 0 /* CONTINUE */;
 
@@ -3370,23 +3340,20 @@ namespace v8_wrapper
 			auto callback = [](const v8::FunctionCallbackInfo<v8::Value>& args)
 			{
 				// Set our default notification status.
-				int request_notification_status = v8pp::from_v8<int>(isolate, args[0], 0)
+				int request_notification_status = v8pp::from_v8<int>(args.GetIsolate(), args[0], 0)
 					? RQ_NOTIFICATION_FINISH_REQUEST : RQ_NOTIFICATION_CONTINUE;
 
 #ifndef DISABLE_INTERNAL_POINTER_RESET
 				// Cast our passthrough objects as an array.
-				auto passthrough_objects = args.Data().As<v8::Array>();
+				auto passthrough_object = (PassthroughObject*)(args.Data().As<v8::External>()->Value());
 
-				// Get the context.
-				auto context = args.GetIsolate()->GetCurrentContext(); 
-
-				// Fetch our response objects.
-				auto http_response_object = passthrough_objects->Get(context, 0).ToLocalChecked().As<v8::Object>();
-				auto http_request_object = passthrough_objects->Get(context, 1).ToLocalChecked().As<v8::Object>();
+				// Setup our objects.
+				auto http_response_object = passthrough_object->m_http_request_object.Get(args.GetIsolate());
+				auto http_request_object = passthrough_object->m_http_response_object.Get(args.GetIsolate());
 
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)(
-					http_response_object->GetAlignedPointerFromInternalField(0)
+					passthrough_object->m_http_context
 				);
 
 				// Regardless of any result,
@@ -3398,6 +3365,9 @@ namespace v8_wrapper
 
 				// Reset internal pointers.
 				RESET_INTERNAL_POINTERS
+		
+				// Delete the object.
+				delete passthrough_object;
 
 #else
 				// Cast our given Data,
@@ -3410,24 +3380,24 @@ namespace v8_wrapper
 					REQUEST_NOTIFICATION_STATUS(request_notification_status)
 				);
 #endif 
-			}; 
+			};
 
 			////////////////////////////////////////////////
 
 #ifndef DISABLE_INTERNAL_POINTER_RESET
 			// Get our current context so we can create our array object.
 			auto context = isolate->GetCurrentContext();
+			auto objects = new PassthroughObject(
+				isolate, 
+				pHttpContext, 
+				std::move(http_response_object), 
+				std::move(http_request_object)
+			);
 
-			// Pass our objects through.
-			auto passthrough_objects = v8::Array::New(isolate, 2);
-			passthrough_objects->Set(context, 0, http_response_object);
-			passthrough_objects->Set(context, 1, http_request_object);
-
-			// Create our callback function.
 			auto function = v8::Function::New(
 				isolate->GetCurrentContext(),
 				callback,
-				passthrough_objects
+				v8::External::New(isolate, objects)
 			).ToLocalChecked();
 #else
 			auto function = v8::Function::New(
@@ -3453,13 +3423,13 @@ namespace v8_wrapper
 		///////////////////////////////////////////
 
 		/*
-		 * We need to normalize our return value.
-		 *
-		 * The PRE_BEGIN_REQUEST callback can only return GL_NOTIFICATION_HANDLED or GL_NOTIFICATION_CONTINUE,
-		 * but the other callbacks must return RQ_NOTIFICATION_FINISH_REQUEST or RQ_NOTIFICATION_CONTINUE.
-		 *
-		 * They represent the same action but differ by value.
-		 */
+		* We need to normalize our return value.
+		*
+		* The PRE_BEGIN_REQUEST callback can only return GL_NOTIFICATION_HANDLED or GL_NOTIFICATION_CONTINUE,
+		* but the other callbacks must return RQ_NOTIFICATION_FINISH_REQUEST or RQ_NOTIFICATION_CONTINUE.
+		*
+		* They represent the same action but differ by value.
+		*/
 		auto return_int_value = v8pp::from_v8<int>(isolate, result_value, 0) ? 
 			(type == PRE_BEGIN_REQUEST ? GL_NOTIFICATION_HANDLED : RQ_NOTIFICATION_FINISH_REQUEST)
 			: RQ_NOTIFICATION_CONTINUE;
@@ -3470,10 +3440,10 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Converts a PSOCKADDR to a formatted string,
-	 * works for both IPv4 and IPv6.
-	 */
-	std::string sock_to_ip(PSOCKADDR address)
+	* Converts a PSOCKADDR to a formatted string,
+	* works for both IPv4 and IPv6.
+	*/
+	std::string IISModuleJS::sock_to_ip(PSOCKADDR address)
 	{
 		if (!address)
 		{
@@ -3507,9 +3477,9 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Executes a string containing JavaScript.
-	 */
-	bool execute_string(const char * script_name, char * str)
+	* Executes a string containing JavaScript.
+	*/
+	bool IISModuleJS::execute_string(const char * script_name, char * str)
 	{
 		// Setup context...
 		v8::Locker locker(isolate);
@@ -3566,10 +3536,10 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Executes a file by reading it's contents and 
-	 * passing it to execute_string.
-	 */
-	void execute_file(std::experimental::filesystem::path & script_path)
+	* Executes a file by reading it's contents and 
+	* passing it to execute_string.
+	*/
+	void IISModuleJS::execute_file(std::experimental::filesystem::path & script_path)
 	{
 		v8::Locker locker(isolate);
 		v8::Isolate::Scope isolate_scope(isolate);
@@ -3658,9 +3628,9 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Formats and reports an exception.
-	 */
-	void report_exception(v8::TryCatch * try_catch)
+	* Formats and reports an exception.
+	*/
+	void IISModuleJS::report_exception(v8::TryCatch * try_catch)
 	{
 		// Setup context...
 		v8::Locker locker(isolate);
@@ -3707,17 +3677,17 @@ namespace v8_wrapper
 	}
 
 	/**
-	 * Converts a Utf8Value to a C string.
-	 */
-	const char* c_string(v8::String::Utf8Value& value)
+	* Converts a Utf8Value to a C string.
+	*/
+	const char* IISModuleJS::c_string(v8::String::Utf8Value& value)
 	{
 		return *value ? *value : "<string conversion failed>";
 	}
 
 	/**
-	 * Uses OutputDebugStringA to print.
-	 */
-	int vs_printf(const char *format, ...)
+	* Uses OutputDebugStringA to print.
+	*/
+	int IISModuleJS::vs_printf(const char *format, ...)
 	{
 		char str[1024];
 
