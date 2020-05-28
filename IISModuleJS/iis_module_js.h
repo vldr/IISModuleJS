@@ -62,7 +62,7 @@
 #include <experimental/filesystem>
 
 
-//#define DISABLE_INTERNAL_POINTER_RESET
+#define DISABLE_INTERNAL_POINTER_RESET
 
 #define RETURN_NULL { args.GetReturnValue().Set(v8::Null(isolate));return; }
 #define RETURN_THIS(value) args.GetReturnValue().Set(v8pp::to_v8(isolate, value)); return;
@@ -89,7 +89,7 @@ http_request_object->SetAlignedPointerInInternalField(0, nullptr);
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))
  
-#define NUM_OF_MODULES 4
+#define NUM_OF_MODULES 2
 #define INCREMENT_COUNT (module_index = (module_index + 1) % NUM_OF_MODULES)
 
 namespace iis_module_js

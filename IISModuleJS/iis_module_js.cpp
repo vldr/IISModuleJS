@@ -1526,7 +1526,7 @@ namespace iis_module_js
 					// Resolve our promise.
 					resolver.Get(isolate)->Resolve(
 						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, hash, strlen(hash))
+						v8pp::to_v8(isolate, hash, BCRYPT_HASHSIZE)
 					);
 				}
 			}); 
@@ -3348,7 +3348,7 @@ namespace iis_module_js
 				auto passthrough_objects = args.Data().As<v8::Array>();
 
 				// Get the context.
-				auto context = args.GetIsolate()->GetCurrentContext();
+				auto context = isolate->GetCurrentContext(); 
 
 				// Fetch our response objects.
 				auto http_response_object = passthrough_objects->Get(context, 0).ToLocalChecked().As<v8::Object>();
