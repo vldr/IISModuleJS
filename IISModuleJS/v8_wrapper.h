@@ -377,6 +377,30 @@ namespace v8_wrapper
 		v8::ArrayBuffer::Contents m_array_buffer;
 	};
 
+	/**
+	* An object used to pass response and request objects to the
+	* finalization of an async response.
+	*/
+	class PassthroughObject
+	{
+	public:
+		v8::Global<v8::Object> m_http_response_object;
+		v8::Global<v8::Object> m_http_request_object;
+		IHttpContext * m_http_context;
+
+		PassthroughObject(
+			v8::Isolate * isolate,
+			IHttpContext * http_context,
+			v8::Local<v8::Object> http_response_object,
+			v8::Local<v8::Object> http_request_object
+		) :
+			m_http_context(http_context),
+			m_http_response_object(isolate, http_response_object),
+			m_http_request_object(isolate, http_request_object)
+		{
+		}
+	};
+
 	const v8::Eternal<v8::Name>* find_or_create_eternal_name_cache(
 		const void* lookup_key,
 		const char* const names[],

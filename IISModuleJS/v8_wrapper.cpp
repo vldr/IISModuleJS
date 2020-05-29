@@ -3375,18 +3375,15 @@ namespace v8_wrapper
 
 #ifndef DISABLE_INTERNAL_POINTER_RESET
 				// Cast our passthrough objects as an array.
-				auto passthrough_objects = args.Data().As<v8::Array>();
+				auto passthrough_object = (PassthroughObject*)(args.Data().As<v8::External>()->Value());
 
-				// Get the context.
-				auto context = args.GetIsolate()->GetCurrentContext();
-
-				// Fetch our response objects.
-				auto http_response_object = passthrough_objects->Get(context, 0).ToLocalChecked().As<v8::Object>();
-				auto http_request_object = passthrough_objects->Get(context, 1).ToLocalChecked().As<v8::Object>();
+				// Setup our objects.
+				auto http_response_object = passthrough_object->m_http_request_object.Get(args.GetIsolate());
+				auto http_request_object = passthrough_object->m_http_response_object.Get(args.GetIsolate());
 
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)(
-					http_response_object->GetAlignedPointerFromInternalField(0)
+					passthrough_object->m_http_context
 					);
 
 				// Regardless of any result,
@@ -3399,6 +3396,8 @@ namespace v8_wrapper
 				// Reset internal pointers.
 				RESET_INTERNAL_POINTERS
 
+				// Delete the object.
+				delete passthrough_object;
 #else
 				// Cast our given Data,
 				auto http_context = (IHttpContext*)args.Data().As<v8::External>()->Value();
@@ -3417,17 +3416,17 @@ namespace v8_wrapper
 #ifndef DISABLE_INTERNAL_POINTER_RESET
 			// Get our current context so we can create our array object.
 			auto context = isolate->GetCurrentContext();
+			auto objects = new PassthroughObject(
+				isolate,
+				pHttpContext,
+				std::move(http_response_object),
+				std::move(http_request_object)
+			);
 
-			// Pass our objects through.
-			auto passthrough_objects = v8::Array::New(isolate, 2);
-			passthrough_objects->Set(context, 0, http_response_object);
-			passthrough_objects->Set(context, 1, http_request_object);
-
-			// Create our callback function.
 			auto function = v8::Function::New(
 				isolate->GetCurrentContext(),
 				callback,
-				passthrough_objects
+				v8::External::New(isolate, objects)
 			).ToLocalChecked();
 #else
 			auto function = v8::Function::New(
