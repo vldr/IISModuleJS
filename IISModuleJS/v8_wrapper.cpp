@@ -1637,7 +1637,7 @@ namespace v8_wrapper
 					// Resolve our promise.
 					resolver.Get(isolate)->Resolve(
 						isolate->GetCurrentContext(),
-						v8pp::to_v8(isolate, hash, BCRYPT_HASHSIZE)
+						v8pp::to_v8(isolate, hash, strlen(hash))
 					);
 				}
 			}); 
