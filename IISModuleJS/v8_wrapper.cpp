@@ -70,8 +70,7 @@ namespace v8_wrapper
 			
 			app_pool_folder_name = app_pool_name;
 
-			script_name = app_pool_folder_name;
-			script_name.append(L".js");
+			script_name = L"Main.js";
 
 			///////////////////////////
 			 
@@ -277,7 +276,7 @@ namespace v8_wrapper
 
 		// Return the reference.
 		return cached_paths[raw_input];
-	}
+	} 
 
 	/**
 	 * Gets the path to the location of 
@@ -308,9 +307,7 @@ namespace v8_wrapper
 		 
 		if (!script.empty())
 		{
-			path.append(
-				fs::path(script).filename()
-			);
+			path = path / app_pool_folder_name / fs::path(script).filename();
 		} 
 
 		/////////////////////////////////////////
@@ -374,9 +371,9 @@ namespace v8_wrapper
 		// Run our rpc server asynchronously.
 		rpc_server.async_run();
 #endif
-
+		 
 		//////////////////////////////////////////
-
+		 
 		auto script_path = get_path(script_name);
 
 		// Add the root script with a default file time type so the file gets initially loaded.
@@ -388,13 +385,13 @@ namespace v8_wrapper
 		);
 
 		//////////////////////////////////////////
-
-		fs_directory = get_path() / app_pool_folder_name;
+		 
+		fs_directory = get_path() / app_pool_folder_name / "filesystem";
 
 		//////////////////////////////////////////
 		  
 		HANDLE change_notify_handle = 0;
-
+		 
 		//////////////////////////////////////////
 		 
 		if (!fs::is_directory(fs_directory))
@@ -1496,7 +1493,7 @@ namespace v8_wrapper
 				v8::Isolate::Scope isolate_scope(isolate);
 				v8::HandleScope handle_scope(isolate);
 				v8::Context::Scope context_scope(context.Get(isolate));
-
+				 
 				if (!decompressed.empty())
 				{
 					resolver.Get(isolate)->Resolve(
