@@ -11,14 +11,15 @@
 #include <windows.h>
 #include <sal.h>
 #include <ws2tcpip.h>
-#include <httpserv.h>
+#include <httpserv.h> 
 #include <vector>
 #include <string> 
-#include <condition_variable>
+#include <condition_variable> 
 #include <atomic>
 #include <Shlobj.h>
 #include <httplib/httplib.h>
 #include <Shlwapi.h>
+#include <ipckv/ipckv.h>
  
 #pragma comment(lib, "sqlite3.lib")
 
@@ -26,6 +27,7 @@
 #include <rpc/server.h>
 #pragma comment(lib, "v8_monolith.64.lib")
 #pragma comment(lib, "rpc.lib")
+#pragma comment(lib, "ipckv.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "winmm.lib")  
 #pragma comment(lib, "libcppdb.lib")
@@ -38,6 +40,7 @@
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "libcppdb.release.lib")
 #pragma comment(lib, "zlibstatic.release.lib")
+#pragma comment(lib, "ipckv.release.lib")
 #endif 
  
 #pragma comment(lib, "crypt32.lib")
@@ -83,9 +86,12 @@ http_request_object->SetAlignedPointerInInternalField(0, nullptr);
 
 #define FETCH_RESPONSE ((httplib::Response*)args.This()->GetAlignedPointerFromInternalField(0))
 #define DB_CONTEXT ((DbContext*)args.This()->GetAlignedPointerFromInternalField(0))
+#define IPC_OBJECT ((IPC_KV*)args.This()->GetAlignedPointerFromInternalField(0))
 
 #define pmax(a,b) (((a) > (b)) ? (a) : (b))
 #define pmin(a,b) (((a) < (b)) ? (a) : (b))
+
+#define IPCKV_DATA_SIZE 2048 
 
 namespace v8_wrapper
 {
@@ -141,6 +147,31 @@ namespace v8_wrapper
 		char* data_;
 		size_t length_;
 	};
+
+	/**
+	 * A class that manages the everything related to the ipc object.
+	 */
+	class IPCHandler
+	{
+	public:
+		IPCHandler(
+			v8::Isolate* isolate,
+			v8::Local<v8::Object> object,
+			IPC_KV * context
+		) : m_context(context), ipc_object(isolate, object)
+		{
+			object->SetAlignedPointerInInternalField(0, m_context);
+		}
+
+		~IPCHandler()
+		{
+			delete m_context;
+		}
+
+		IPC_KV * m_context;
+		v8::Persistent<v8::Object> ipc_object;
+	};
+
 
 	/**
 	* A class that handles the IHttpContext object.

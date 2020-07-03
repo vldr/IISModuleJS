@@ -1,5 +1,4 @@
 #include "v8_wrapper.h"
-#include <simdb/simdb.hpp>
 
 namespace v8_wrapper
 {
@@ -11,6 +10,8 @@ namespace v8_wrapper
 
 	v8::Global<v8::Object> global_http_response_object;
 	v8::Global<v8::Object> global_http_request_object;
+
+	v8::Global<v8::Object> global_ipc_object;
 	 
 	/////////////////////////////////////////////////
 
@@ -53,9 +54,6 @@ namespace v8_wrapper
 	std::condition_variable thread_count_cv;
 	std::mutex thread_count_lock;
 
-	// Simdb database use for ipc.get and ipc.set
-	simdb db;
-
 	/**
 	 * The method that initializes everything necessary.
 	 */
@@ -63,11 +61,6 @@ namespace v8_wrapper
 	{
 		// Setup our engine thread.
 		std::thread engine_thread([app_pool_name] {	
-			db = simdb("IISModule", 1024, 4096);
-			db.flush();
-
-			///////////////////////////
-			
 			app_pool_folder_name = app_pool_name;
 
 			script_name = L"Main.js";
@@ -907,101 +900,65 @@ namespace v8_wrapper
 		////////////////////////////////////////
 
 		// ipc Property
-		v8pp::module ipc_module(isolate);
+		v8pp::module ipc_module(isolate); 
 
-		// ipc.set(key: String, value: any): void
-		ipc_module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			if (args.Length() < 2) 
-				throw std::exception("invalid function signature for ipc.set");
-			
-			if (!args[0]->IsString()) 
-				throw std::exception("invalid first parameter, must be a string for ipc.set");
+		// ipc.init(name: String): IPCObject
+		ipc_module.set("init", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+			if (args.Length() < 1)
+				throw std::exception("invalid function signature for db.init");
+
+			if (!args[0]->IsString())
+				throw std::exception("invalid first parameter, must be a string for db.init");
 
 			/////////////////////////////////////////////
-
-			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
 			 
-			/////////////////////////////////////////////
-
-			SerializerDelegate serializer_delegate(args.GetIsolate());
-			v8::ValueSerializer serializer(args.GetIsolate(), &serializer_delegate);
-			 
-			auto result = serializer.WriteValue(
-				args.GetIsolate()->GetCurrentContext(),
-				args[1]
-			).FromMaybe(false);
-
-			if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
-
+			auto name = v8pp::from_v8<std::string>(isolate, args[0]);
+			
 			/////////////////////////////////////////////
 			
-			std::pair<uint8_t*, size_t> buffer = serializer.Release();
-
-			result = db.put(key.data(), key.length(), buffer.first, buffer.second);
-			
-			serializer_delegate.FreeBufferMemory(buffer.first);
-		});
-
-		// ipc.get(key: String): any || null
-		ipc_module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			v8::EscapableHandleScope escapable_handle_scope(args.GetIsolate()); 
-			
-			if (args.Length() < 1) throw std::exception("invalid function signature for ipc.get");
-			if (!args[0]->IsString()) throw std::exception("invalid first parameter, must be a string for ipc.get");
-
-			auto key = v8pp::from_v8<std::string>(args.GetIsolate(), args[0]);
+			auto ipc_context = std::make_unique<IPC_KV>(name.c_str());
 
 			/////////////////////////////////////////////
 
-			simdb::u32 len = 0;
+			auto ipc_object = global_ipc_object.Get(isolate)->Clone();
+			auto ipc_handler = new IPCHandler(isolate, ipc_object, ipc_context.release());
 
-			db.len(key, &len);
+			//////////////////////////////////
 
-			if (!len) RETURN_NULL
+			ipc_handler->ipc_object.SetWeak(
+				ipc_handler,
+				[](const v8::WeakCallbackInfo<IPCHandler>& data)
+				{
+					// Reset our JS object.
+					data.GetParameter()->ipc_object.Reset();
 
-			/////////////////////////////////////////////
+					///////////////////////////////
 
-			auto buffer = std::make_unique<uint8_t[]>(len);
+					// Decrement our external memory usage.
+					data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
+						-(int64_t)sizeof(IPC_KV)
+					);
 
-			if (!buffer)
-			{
-				throw std::exception("unable to allocate for ipc.get");
-			}
+					///////////////////////////////
 
-			auto result = db.get(
-				key.c_str(),
-				buffer.get(),
-				len
-			);
-			
-			if (!result) RETURN_NULL
-			
-			/////////////////////////////////////////////
-
-			DeserializerDelegate deserializer_delegate(args.GetIsolate());
-			v8::ValueDeserializer deserializer(
-				args.GetIsolate(), 
-				buffer.get(),
-				len, 
-				&deserializer_delegate
+					// Delete our object.
+					delete data.GetParameter();
+				},
+				v8::WeakCallbackType::kParameter
 			);
 
-			auto value = deserializer.ReadValue(args.GetIsolate()->GetCurrentContext());
+			//////////////////////////////////
 
-			if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
+			// Increment our external memory usage.
+			isolate->AdjustAmountOfExternalAllocatedMemory(
+				(int64_t)sizeof(IPC_KV)
+			);
 
-			/////////////////////////////////////////////
-			
+			//////////////////////////////////
+
 			args.GetReturnValue().Set(
-				escapable_handle_scope.Escape(
-					value.ToLocalChecked()
-				)
-			); 
-		});
-
-		// ipc.clear(): void
-		ipc_module.set("clear", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
-			db = simdb("IISModule", 1024, 4096);
+				ipc_object
+			);
 		});
 
 		////////////////////////////////////////
@@ -1754,6 +1711,116 @@ namespace v8_wrapper
 		v8::Isolate::Scope isolate_scope(isolate);
 		v8::HandleScope handle_scope(isolate); 
 		v8::Context::Scope context_scope(context.Get(isolate));
+
+
+		/////////////////////////////
+		//      IPC JS Object      //
+		/////////////////////////////
+		if (global_ipc_object.IsEmpty())
+		{
+			// Setup our module...
+			v8pp::module module(isolate); 
+
+			// Setup our functions
+
+			// ipc.set(key: String, value: any): void
+			module.set("set", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!IPC_OBJECT)
+					throw std::exception("invalid function pointer for ipc.set");
+
+				if (args.Length() < 2) 
+					throw std::exception("invalid function signature for ipc.set");
+			
+				if (!args[0]->IsString()) 
+					throw std::exception("invalid first parameter, must be a string for ipc.set");
+				 
+				/////////////////////////////////////////////
+
+				auto key = v8pp::from_v8<std::string>(isolate, args[0]);
+
+				/////////////////////////////////////////////
+
+				SerializerDelegate serializer_delegate(isolate);
+				v8::ValueSerializer serializer(isolate, &serializer_delegate);
+
+				auto result = serializer.WriteValue(
+					isolate->GetCurrentContext(),
+					args[1]
+				).FromMaybe(false);
+
+				if (!result) throw std::exception("invalid object given, unable to serialize for ipc.set");
+
+				/////////////////////////////////////////////
+
+				std::pair<uint8_t*, size_t> buffer = serializer.Release();
+
+				IPC_OBJECT->set(key, buffer.first, buffer.second);
+
+				serializer_delegate.FreeBufferMemory(buffer.first);
+			});
+
+			// ipc.get(key: String): any || null
+			module.set("get", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!IPC_OBJECT)
+					throw std::exception("invalid function pointer for ipc.get");
+			
+				if (args.Length() < 1) 
+					throw std::exception("invalid function signature for ipc.get");
+
+				if (!args[0]->IsString()) 
+					throw std::exception("invalid first parameter, must be a string for ipc.get");
+
+				auto key = v8pp::from_v8<std::string>(isolate, args[0]);
+
+				/////////////////////////////////////////////
+
+				unsigned char buffer[IPCKV_DATA_SIZE];
+				size_t size;
+
+				/////////////////////////////////////////////
+
+				bool result = IPC_OBJECT->get(key, buffer, size);
+
+				if (!result) RETURN_NULL
+
+				/////////////////////////////////////////////
+
+				DeserializerDelegate deserializer_delegate(isolate);
+				v8::ValueDeserializer deserializer(
+					isolate,
+					buffer,
+					size,
+					&deserializer_delegate
+				); 
+
+				auto value = deserializer.ReadValue(isolate->GetCurrentContext());
+
+				if (value.IsEmpty()) throw std::exception("unable to deserialize value for ipc.get");
+
+				/////////////////////////////////////////////
+
+				args.GetReturnValue().Set(
+					value.ToLocalChecked()
+				); 
+			});
+
+			// ipc.close(): void
+			module.set("close", [](v8::FunctionCallbackInfo<v8::Value> const& args) {
+				if (!IPC_OBJECT)
+					throw std::exception("invalid function pointer for ipc.close");
+
+				IPC_OBJECT->close();
+
+				args.This()->SetAlignedPointerInInternalField(0, nullptr);
+			});
+
+			// Set our internal field count.
+			module.obj_->SetInternalFieldCount(1);
+
+			// Reset our pointer...
+			global_ipc_object.Reset(isolate, module.new_instance());
+		}
+
 
 		/////////////////////////////
 		//      DB JS Object       //
