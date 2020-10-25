@@ -12,7 +12,7 @@ public:
 	{
 		auto random_string = [](size_t length) -> std::string
 		{
-			srand(time(nullptr));
+			srand(time(NULL));
 			auto randchar = []() -> char
 			{
 				const char charset[] =
@@ -59,7 +59,7 @@ public:
 	{
 		auto random_string_array = [](size_t length) -> std::tuple<std::string, std::string>
 		{
-			srand(time(nullptr));
+			srand(time(NULL));
 			std::stringstream clean;
 			std::stringstream ss;
 
@@ -150,7 +150,7 @@ public:
 
 		auto random_string = [](size_t length) -> std::string
 		{
-			srand(time(nullptr));
+			srand(time(NULL));
 			auto randchar = []() -> char
 			{
 				const char charset[] =
@@ -200,7 +200,7 @@ public:
 		
 		auto random_string = [](size_t length) -> std::string
 		{
-			srand(time(nullptr));
+			srand(time(NULL));
 			auto randchar = []() -> char
 			{
 				const char charset[] =
